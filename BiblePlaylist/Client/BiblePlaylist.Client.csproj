@@ -1,0 +1,48 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ServiceWorkerAssetsManifest>service-worker-assets.js</ServiceWorkerAssetsManifest>
+    <UserSecretsId>421951bd-8b0c-4012-a616-63a2c50eca3c</UserSecretsId>   
+    <Version>0.1.8.0</Version>
+    <Authors>Greg Hardin</Authors>
+    <Title>Bible Playlist</Title>
+    <PublishTrimmed>false</PublishTrimmed>
+    <RunAotCompilation>false</RunAotCompilation>
+  </PropertyGroup>
+
+  <ItemGroup>    
+    <PackageReference Include="Blazored.LocalStorage" Version="4.5.0" />    
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="9.0.0" />    
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="9.0.0" PrivateAssets="all" />    
+    <PackageReference Include="Microsoft.Extensions.Localization" Version="9.0.0" />    
+    <PackageReference Include="MudBlazor" Version="7.15.0" />
+    <PackageReference Include="System.Net.Http.Json" Version="9.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Shared\BiblePlaylist.Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ServiceWorker Include="wwwroot\service-worker.js" PublishedContent="wwwroot\service-worker.published.js" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Update="Pages\Parse.razor">
+      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+    </Content>
+    <Content Update="Shared\ReadVerses.razor">
+      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Data\" />
+  </ItemGroup>
+
+  <!--<Target Name="PreBuild" BeforeTargets="PreBuildEvent 
+    <Exec Command="powershell -Command &quot;(gc 'index-template.html') -replace '{BUILD_NUMBER}', (Get-Date).ToString('yyyyMMddhhmmss') | Out-File 'wwwroot/index.html'&quot;" />
+  </Target>-->
+
+</Project>

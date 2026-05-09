@@ -1,0 +1,101 @@
+{
+    "Key": "e44dae2b-947a-4663-9c18-bf9c019e456e",
+    "UPN": "greg.hardin@live.com",
+    "Code": "library_greg_hardin_live_com",
+    "Playlists": [
+        {
+            "Key": "4l4w3s6wVkWAI0L2H86Vyg",
+            "Name": "The Christmas Story",
+            "Description": "The Christmas from John, Luke, and Matthew",
+            "Shuffle": false,
+            "Repeat": true,
+            "BookChapters": [
+                {
+                    "VersionCode": "NET",
+                    "Book": null,
+                    "BookNumber": 43,
+                    "Chapter": null,
+                    "ChapterNumber": 1,
+                    "Segments": [
+                        {
+                            "VoiceText": "verses 1 through 9",
+                            "Verses": null,
+                            "VerseStart": 1,
+                            "VerseEnd": 9
+                        }
+                    ],
+                    "Display": "John 1:1-9",
+                    "VoiceText": "John chapter 1"
+                },
+                {
+                    "VersionCode": "NET",
+                    "Book": null,
+                    "BookNumber": 42,
+                    "Chapter": null,
+                    "ChapterNumber": 1,
+                    "Segments": [
+                        {
+                            "VoiceText": "verses 26 through 47",
+                            "Verses": null,
+                            "VerseStart": 26,
+                            "VerseEnd": 47
+                        }
+                    ],
+                    "Display": "Luke 1:26-47",
+                    "VoiceText": "Luke chapter 1"
+                },
+                {
+                    "VersionCode": "NET",
+                    "Book": null,
+                    "BookNumber": 40,
+                    "Chapter": null,
+                    "ChapterNumber": 1,
+                    "Segments": [
+                        {
+                            "VoiceText": "verses 17 through 25",
+                            "Verses": null,
+                            "VerseStart": 17,
+                            "VerseEnd": 25
+                        }
+                    ],
+                    "Display": "Matthew 1:17-25",
+                    "VoiceText": "Matthew chapter 1"
+                },
+                {
+                    "VersionCode": "NET",
+                    "Book": null,
+                    "BookNumber": 42,
+                    "Chapter": null,
+                    "ChapterNumber": 2,
+                    "Segments": [
+                        {
+                            "VoiceText": "verses 1 through 39",
+                            "Verses": null,
+                            "VerseStart": 1,
+                            "VerseEnd": 39
+                        }
+                    ],
+                    "Display": "Luke 2:1-39",
+                    "VoiceText": "Luke chapter 2"
+                },
+                {
+                    "VersionCode": "NET",
+                    "Book": null,
+                    "BookNumber": 40,
+                    "Chapter": null,
+                    "ChapterNumber": 2,
+                    "Segments": [
+                        {
+                            "VoiceText": "verses 1 through 15",
+                            "Verses": null,
+                            "VerseStart": 1,
+                            "VerseEnd": 15
+                        }
+                    ],
+                    "Display": "Matthew 2:1-15",
+                    "VoiceText": "Matthew chapter 2"
+                }
+            ]
+        }
+    ]
+}

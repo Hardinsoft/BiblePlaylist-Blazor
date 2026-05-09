@@ -1,0 +1,216 @@
+﻿
+@using BiblePlaylist.Client.Config
+@using BiblePlaylist.Client.Events
+@using Microsoft.Extensions.Logging
+@inject HttpClient Http
+@inject Blazored.LocalStorage.ILocalStorageService localStorage
+@inject IJSRuntime JSRuntime
+@inject ILogger<ReadParseVerses> logger
+@inject ISnackbar Snackbar
+@inject Endpoints endpoints
+
+
+<MudGrid Class="mt-1">
+    <MudItem md="1" xs="3"><MudButton @onclick="SaveVerses">Save</MudButton></MudItem><MudItem md="4" xs="3">
+        <MudSwitch @bind-Value="fineTune" Label="Fine tune" Color="Color.Info" />
+    </MudItem>
+    @foreach (var v in displayVerses)
+    {
+        <MudItem md="8" xs="12">
+            <p style="font-size: large"><strong class="mr-3">@v.Number</strong>@(new MarkupString(v.Html))</p>
+        </MudItem>
+        <MudItem md="1" xs="4">
+            <MudFab Class="mr-1" StartIcon="@Icons.Material.Filled.PlayCircle" Color="@Color.Dark" @onclick="@(async e => await PlayVerse(v))" Size="Size.Small" />
+        </MudItem>
+        <MudItem md="1" xs="4">
+            <MudFab Class="mr-1" StartIcon="@Icons.Material.Filled.Start" Color="@Color.Dark" @onclick="@(async e => await StartAudioTime(v))" Size="Size.Small" />
+            @if (fineTune)
+            {
+                <MudNumericField @bind-Value="v.AudioStart" Step=".01M"></MudNumericField>
+            }
+            else
+            {
+                <p>@v.AudioStart</p>
+            }
+        </MudItem>
+        <MudItem md="1" xs="4">
+            <MudFab Class="mr-1" StartIcon="@Icons.Material.Filled.Stop" Color="@Color.Dark" @onclick="(async e => await StopAudioTime(v))" Size="Size.Small" />
+            @if (fineTune)
+            {
+                <MudNumericField @bind-Value="v.AudioEnd" Step=".01M"></MudNumericField>
+            }
+            else
+            {
+                <p>@v.AudioEnd</p>
+            }
+        </MudItem>
+    }
+</MudGrid>
+
+
+
+
+
+@code {
+    private BiblePlaylist.Shared.DTO.SelectedBookChapter _selectedBookChapter;
+    private string previousBookChapter;
+    private List<BiblePlaylist.Shared.Bible.Verse> displayVerses = new List<BiblePlaylist.Shared.Bible.Verse>();
+    //[Parameter]
+    private BiblePlaylist.Shared.DTO.SelectedBookChapter SelectedBookChapter { get; set; }
+    [Parameter]
+    public EventCallback OnAudioHasPlayed { get; set; }
+    [Inject]
+    private IDelegateLibrary delegateLibrary { get; set; }
+
+    private BiblePlaylist.Shared.Bible.Version lastRead;
+    private bool fineTune = false;  
+
+
+    protected override async Task OnParametersSetAsync()
+    {
+        
+
+        // if (SelectedBookChapter != null)        
+        //     await ReloadChapter(SelectedBookChapter);           
+
+        await InvokeAsync(StateHasChanged);
+        await base.OnParametersSetAsync();
+
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        
+        delegateLibrary.ChapterChanged += (o, e) => OnChapterChange(e.Value);
+        // OnReloadChapter = EventCallback.Factory.Create<BiblePlaylist.Shared.DTO.SelectedBookChapter>(this, ReloadChapter);
+
+        if (SelectedBookChapter == null)
+        {
+            lastRead = await localStorage.GetItemAsync<BiblePlaylist.Shared.Bible.Version>("userName_lastread");
+
+            if (lastRead == null || lastRead.Books == null)
+            {
+                var lastReadResponse = await Http.GetAsync($"Version?key={BiblePlaylist.Shared.Structs.Version.NET}&Book=1&Chapter=1");
+                lastRead = await lastReadResponse.Content.ReadFromJsonAsync<BiblePlaylist.Shared.Bible.Version>();
+                await localStorage.SetItemAsync<BiblePlaylist.Shared.Bible.Version>("userName_lastread", lastRead);
+            }
+
+            var lastBook = lastRead.Books.FirstOrDefault();
+            SelectedBookChapter = new BiblePlaylist.Shared.DTO.SelectedBookChapter() { SelectedBook = lastBook.Number, SelectedChapter = lastBook.Chapters.FirstOrDefault().Number };
+            previousBookChapter = $"{SelectedBookChapter.SelectedChapter}{SelectedBookChapter.SelectedBook}";
+            await localStorage.SetItemAsync <BiblePlaylist.Shared.DTO.SelectedBookChapter>("userName_selectedbookchapter", SelectedBookChapter);
+            if (displayVerses != null && displayVerses.Count > 1)
+                displayVerses.Clear();
+
+            foreach (var book in lastRead.Books)
+            {
+                foreach (var chapter in book.Chapters)
+                {
+                    foreach (var verse in chapter.Verses)
+                    {
+                        displayVerses.Add(verse);
+                    }
+                }
+            }
+            await InvokeAsync(StateHasChanged);
+        }
+        await base.OnInitializedAsync();
+    }
+
+    void OnChapterChange(BiblePlaylist.Shared.DTO.SelectedBookChapter selectedBookChapter)
+    {
+        Task.Run(async () =>
+        {
+            await ReloadChapter(selectedBookChapter);
+        });
+    }
+
+    private async Task ReloadChapter(BiblePlaylist.Shared.DTO.SelectedBookChapter selectedBookChapter) 
+    {
+        SelectedBookChapter = selectedBookChapter;
+        if (selectedBookChapter != null && previousBookChapter != $"{selectedBookChapter.SelectedChapter}{selectedBookChapter.SelectedBook}")
+        {
+            previousBookChapter = $"{selectedBookChapter.SelectedChapter}{selectedBookChapter.SelectedBook}";
+            lastRead = await SetLastRead(selectedBookChapter);
+
+            var displayChapter = lastRead.Books.Where(b => b.Number == selectedBookChapter.SelectedBook).Where(c => c.Number == selectedBookChapter.SelectedChapter).FirstOrDefault();
+
+
+            if (displayVerses != null && displayVerses.Count > 1)
+                displayVerses.Clear();
+
+            foreach (var book in lastRead.Books)
+            {
+                foreach (var chapter in book.Chapters)
+                {
+                    foreach (var verse in chapter.Verses)
+                    {
+                        displayVerses.Add(verse);
+                    }
+                }
+            }
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task<BiblePlaylist.Shared.Bible.Version> SetLastRead(BiblePlaylist.Shared.DTO.SelectedBookChapter selectedBookChapter)
+    {
+        var lastReadResponse = await Http.GetAsync($"Version?key={BiblePlaylist.Shared.Structs.Version.NET}&Book={selectedBookChapter.SelectedBook.ToString()}&Chapter={selectedBookChapter.SelectedChapter.ToString()}");
+
+        BiblePlaylist.Shared.Bible.Version lastReadLocal = null;
+
+        try
+        {
+            lastReadLocal = await lastReadResponse.Content.ReadFromJsonAsync<BiblePlaylist.Shared.Bible.Version>();
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Cannot load version from Storage");
+        }
+        await localStorage.SetItemAsync<BiblePlaylist.Shared.Bible.Version>("userName_lastread", lastReadLocal);
+        await localStorage.SetItemAsync<BiblePlaylist.Shared.DTO.SelectedBookChapter>("userName_selectedbookchapter", selectedBookChapter);
+
+        return lastReadLocal;
+    }
+
+    private async Task StartAudioTime(BiblePlaylist.Shared.Bible.Verse verse)
+    {
+        var audioTimeResponse = await JSRuntime.InvokeAsync<decimal>("GetAudioCurrentTime");
+        verse.AudioStart = audioTimeResponse;
+    }
+
+    private async Task StopAudioTime(BiblePlaylist.Shared.Bible.Verse verse)
+    {
+        var audioTimeResponse = await JSRuntime.InvokeAsync<decimal>("GetAudioCurrentTime");
+        verse.AudioEnd = audioTimeResponse;
+        var verseCount = displayVerses.Count;
+        if (verse.Number != verseCount)
+        {
+            var nextVerse = displayVerses.FirstOrDefault(v => v.Number == verse.Number + 1);
+            // Add 50 milliseconds to next verse
+            nextVerse.AudioStart = verse.AudioEnd + .05M;
+        }
+    }
+
+    private async Task SaveVerses()
+    {
+        if(SelectedBookChapter ==  null)
+            SelectedBookChapter = await localStorage.GetItemAsync<BiblePlaylist.Shared.DTO.SelectedBookChapter>("userName_selectedbookchapter");
+
+        var book = new BiblePlaylist.Shared.Bible.Book() { Number = SelectedBookChapter.SelectedBook };
+        book.Chapters = new List<BiblePlaylist.Shared.Bible.Chapter>() { new BiblePlaylist.Shared.Bible.Chapter() { Number = SelectedBookChapter.SelectedChapter } };
+        book.Chapters.FirstOrDefault().Verses = displayVerses;
+        var version = new BiblePlaylist.Shared.Bible.Version() { Code = BiblePlaylist.Shared.Structs.Version.NET, Books = new List<BiblePlaylist.Shared.Bible.Book>() { book } };
+        await Http.PostAsJsonAsync("Version/SaveVerses", version);
+        await SetLastRead(SelectedBookChapter);
+        Snackbar.Add(new MarkupString("Verse segments saved successfully!"), Severity.Success);
+    }
+
+    private async Task PlayVerse(BiblePlaylist.Shared.Bible.Verse verse)
+    {        
+        var audioUrl = $"{endpoints.Audio}{lastRead.Books.FirstOrDefault().Chapters.FirstOrDefault().AudioUrl}";
+        await JSRuntime.InvokeVoidAsync("PlayAudioSegment", "fullChapterAudioPlayer", "fullChapterAudioSource", audioUrl, verse.AudioStart, verse.AudioEnd);
+        delegateLibrary.NotifyHasPlayedChanged(this, new Delegates.EventArgs<bool>(true));
+    }
+
+}

@@ -1,0 +1,40 @@
+﻿
+@using BiblePlaylist.Shared.Data
+@using BiblePlaylist.Shared.Playlist
+@using Microsoft.Extensions.Logging
+@inject HttpClient Http
+@inject Blazored.LocalStorage.ILocalStorageService localStorage
+@inject IJSRuntime JSRuntime
+@inject ILogger<ReadVerses> logger
+
+<MudPaper>
+    <MudContainer>
+        <MudGrid>
+            <MudItem>
+                <h5>@selectedPlaylist?.Name</h5>
+                <h6>@selectedPlaylist?.Description</h6>
+            </MudItem>
+        </MudGrid>
+    </MudContainer>
+</MudPaper>
+
+@code {
+    private Library Library { get; set; }
+    private Playlist selectedPlaylist { get; set; }
+    [Parameter]
+    public string PlaylistName { get; set; }
+    protected override async Task OnParametersSetAsync()
+    {
+        await base.OnParametersSetAsync();
+        selectedPlaylist = Library.Playlists.FirstOrDefault(pl => pl.Name == PlaylistName);
+        await InvokeAsync(StateHasChanged);
+              
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+        string libraryResponse = await Http.GetStringAsync("library?key=library_greg_hardin_live_com");
+        Library = JsonConvert.DeserializeObject<Library>(libraryResponse);               
+    }
+}

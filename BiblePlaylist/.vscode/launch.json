@@ -1,0 +1,14 @@
+{
+    "configurations": [
+    {
+    "name": "Launch and Debug Hosted Blazor WebAssembly App",
+    "type": "blazorwasm",
+    "request": "launch",
+    "hosted": true,
+    "program": "${workspaceFolder}/Server/bin/Debug/netcoreapp3.1/MyHostedApp.Server.dll",
+    "cwd": "${workspaceFolder}/Server",
+    "browser": "edge",
+    }  
+    
+    ]
+  }

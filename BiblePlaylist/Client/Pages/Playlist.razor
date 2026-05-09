@@ -1,0 +1,29 @@
+﻿@page "/playlists"
+@using Microsoft.Extensions.Logging
+@inject HttpClient Http
+@inject Blazored.LocalStorage.ILocalStorageService localStorage
+@inject IJSRuntime JSRuntime
+@inject ILogger<Playlist> logger
+@inject ISnackbar Snackbar
+@inherits BasePage
+
+
+<NavPlaylistMenu PlaylistName="The Christmas Story"></NavPlaylistMenu>
+@* <MudItem md="1" xs="3">
+    <MudButton @onclick="AddPlaylist">Add Playlist Proto</MudButton></MudItem><MudItem md="4" xs="3">    
+</MudItem> *@
+<PlaylistPlayer></PlaylistPlayer>
+
+
+
+@code {    
+
+    private async Task AddPlaylist()
+    {
+        await Http.PostAsync("Library/AddPrototype", null);
+        Snackbar.Add(new MarkupString("Library with playlist prototype saved successfully!"), Severity.Success);
+    }
+
+}
+
+

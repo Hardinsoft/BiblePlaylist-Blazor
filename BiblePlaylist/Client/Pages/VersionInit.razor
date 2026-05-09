@@ -1,0 +1,298 @@
+﻿@page "/versioninit"
+@inject HttpClient Http
+@inject HttpClient HttpAudio
+ 
+<h1>Version Init</h1>
+
+<div class="row">
+    <div class="col col-12">
+        <button class="btn btn-primary" @onclick="Add">@addVersionText</button>
+    </div>
+</div>
+<div class="row mt-1">
+    <div class="col col-12">
+        <button class="btn btn-primary" @onclick="Update">@updateVersionText</button>
+    </div>
+</div>
+<div class="row mt-1">
+    <div class="col col-12">
+        <button class="btn btn-primary" @onclick="AddBibleMenu">@addBibleMenuText</button>
+    </div>    
+</div>
+<div class="row mt-1">
+    <div class="col col-12">
+        <button class="btn btn-primary" @onclick="DownloadChapterAudio">@downloadChapterAudioText</button>
+    </div>
+    <div class="col col-12">
+        <p>@chapterAudioDownloadStatus</p>
+    </div>
+</div>
+<div class="row mt-1">
+    <div class="col col-12">
+        <button class="btn btn-primary" @onclick="UpdatePsalmAudio">@updatePsalmAudioText</button>
+    </div>
+    <div class="col col-12">
+        <p>@psalmAudioUpdateStatus</p>
+    </div>
+</div>
+<div class="row mt-1">
+    <div class="col col-12">
+        <button class="btn btn-primary" @onclick="RemoveAudioURL">@updateAudioText</button>
+    </div>
+    <div class="col col-12">
+        <p>@audioUpdateStatus</p>
+    </div>
+</div>
+
+<div class="row mt-1">
+    <div class="col col-12">
+        <button class="btn btn-primary" @onclick="ParseVerseAudio">@parseVerseAudioText</button>
+    </div>
+    <div class="col col-12">
+        <p>@parseVerseAudioStatus</p>
+    </div>
+</div>
+
+
+
+@code {
+
+    private string addVersionText = "Add Version";
+    private string updateVersionText = "Update Version";
+    private string addBibleMenuText = "Add Bible Menu";
+    private string downloadChapterAudioText = "Download Chapter Audio";
+    private string chapterAudioDownloadStatus = string.Empty;
+    private string updatePsalmAudioText = "Update Psalm Audio";
+    private string psalmAudioUpdateStatus = string.Empty;
+    private string parseVerseAudioText = "Parse Verse Audio";
+    private string parseVerseAudioStatus = string.Empty;
+    private string updateAudioText = "Remove Audio URL";
+    private string audioUpdateStatus = string.Empty;
+    private HttpClient _httpAudio;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+        //_httpAudio = httpClientFactory.CreateClient("audio");
+
+    }
+
+    private async void Add()
+    {
+        addVersionText = "Adding...";
+        await Http.PostAsync("Version", null);
+        addVersionText = "Add Version";
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async void Update()
+    {
+
+        updateVersionText = "Updating...";
+        var version = new BiblePlaylist.Shared.Bible.Version { Code = "NET" };
+        await Http.PutAsJsonAsync("Version", version);
+        updateVersionText = "Update Version";
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async void AddBibleMenu()
+    {
+
+        addBibleMenuText = "Adding...";
+        var version = new BiblePlaylist.Shared.Bible.Version { Code = "NET" };
+        await Http.PostAsJsonAsync("BibleMenu", version);
+        addBibleMenuText = "Add Bible Menu";
+        await InvokeAsync(StateHasChanged);
+    }
+    private async void DownloadChapterAudio()
+    {
+        downloadChapterAudioText = "Downloading...";
+        //var version = new BiblePlaylist.Shared.Bible.Version { Code = "NET" };
+        var version = await Http.GetFromJsonAsync<BiblePlaylist.Shared.Bible.Version>($"Version?key={BiblePlaylist.Shared.Structs.Version.NET}");
+        if (version == null)
+        {
+            chapterAudioDownloadStatus = "Version not found.";
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        foreach (var book in version.Books)
+        {               
+            foreach (var chapter in book.Chapters)
+            {
+                var audioURL = chapter?.AudioUrl;
+                chapterAudioDownloadStatus = audioURL;
+                await InvokeAsync(StateHasChanged);
+                var fileName = audioURL?.Replace("https://feeds.bible.org/netaudio/", "");
+
+                if (string.IsNullOrEmpty(fileName))
+                {
+                    chapterAudioDownloadStatus = "No audio file found for this chapter.";
+                    await InvokeAsync(StateHasChanged);
+                    continue;
+                }
+
+                var response = await Http.PostAsync($"/version/audio?filename={fileName}", new StringContent(string.Empty));
+
+                if (response.IsSuccessStatusCode)
+                {
+                    chapterAudioDownloadStatus = $" {fileName} successfully stored on the server.";
+                }
+                else
+                {
+                    chapterAudioDownloadStatus = $"Failed to store audio file {fileName}: {response.ReasonPhrase}";
+                }
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+
+        downloadChapterAudioText = "Download Chapter Audio";
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async void RemoveAudioURL()
+    {
+        updateAudioText = "Updating...";
+        //var version = new BiblePlaylist.Shared.Bible.Version { Code = "NET" };
+        var version = await Http.GetFromJsonAsync<BiblePlaylist.Shared.Bible.Version>($"Version?key={BiblePlaylist.Shared.Structs.Version.NET}");
+        if (version == null)
+        {
+            audioUpdateStatus = "Version not found.";
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        foreach (var book in version.Books)
+        {
+            foreach (var chapter in book.Chapters)
+            {
+                var audioURL = chapter?.AudioUrl;
+                audioUpdateStatus = audioURL;
+                await InvokeAsync(StateHasChanged);               
+
+                if (string.IsNullOrEmpty(audioURL))
+                {
+                    audioUpdateStatus = "No audio file found for this chapter.";
+                    await InvokeAsync(StateHasChanged);
+                    continue;
+                }
+
+                audioURL = audioURL?.Replace("https://feeds.bible.org/netaudio/", "");
+                audioUpdateStatus = audioURL;
+                await InvokeAsync(StateHasChanged);
+                chapter.AudioUrl = audioURL;
+            }
+        }
+        audioUpdateStatus = "Update version";
+        await InvokeAsync(StateHasChanged);
+        await Http.PutAsJsonAsync("Version/Save", version);
+        audioUpdateStatus = "Audio URLs updated successfully.";
+        updateAudioText = "Update Audio URLs";
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async void UpdatePsalmAudio()
+    {
+        updatePsalmAudioText = "Updating...";
+        //var version = new BiblePlaylist.Shared.Bible.Version { Code = "NET" };
+        var version = await Http.GetFromJsonAsync<BiblePlaylist.Shared.Bible.Version>($"Version?key={BiblePlaylist.Shared.Structs.Version.NET}");
+        if (version == null)
+        {
+            psalmAudioUpdateStatus = "Version not found.";
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        foreach (var book in version.Books.Where(b => b.Number == 19))
+        {
+            foreach (var chapter in book.Chapters.Where(c => c.Number < 100))
+            {
+                var audioURL = chapter?.AudioUrl;
+                psalmAudioUpdateStatus = audioURL;
+                await InvokeAsync(StateHasChanged);               
+
+                string fileName = $"{book.PaddedNumber}-{book.Name.Replace(" ", "")}-0{chapter.PaddedNumber}.mp3";
+
+                if (string.IsNullOrEmpty(fileName))
+                {
+                    psalmAudioUpdateStatus = "No audio file found for this chapter.";
+                    await InvokeAsync(StateHasChanged);
+                    continue;
+                }
+
+                audioURL = $"https://feeds.bible.org/netaudio/{fileName}";
+                psalmAudioUpdateStatus = audioURL;
+                await InvokeAsync(StateHasChanged);
+                chapter.AudioUrl = audioURL;               
+            }
+        }
+        psalmAudioUpdateStatus = "Update version";
+        await InvokeAsync(StateHasChanged);
+        await Http.PutAsJsonAsync("Version/Save", version);
+        psalmAudioUpdateStatus = "Psalm Audio updated successfully.";
+        updatePsalmAudioText = "Update Psalm Audio";
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async void ParseVerseAudio()
+    {
+        parseVerseAudioText = "Parsing...";
+        //var version = new BiblePlaylist.Shared.Bible.Version { Code = "NET" };
+        var version = await Http.GetFromJsonAsync<BiblePlaylist.Shared.Bible.Version>($"Version?key={BiblePlaylist.Shared.Structs.Version.NET}");
+        if (version == null)
+        {
+            parseVerseAudioStatus = "Version not found.";
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        foreach (var book in version.Books.Where(bk => bk.Name == "Genesis"))
+        {
+            foreach (var chapter in book.Chapters.Where(c => c.Number > 4 && c.Number < 25 && !string.IsNullOrEmpty(c.AudioUrl)))
+            {
+                var statusPrefix = $"Chapter {chapter.Number} of {book.Name}";
+                if (chapter.Verses.Any(v => v.AudioStart > 0.0m))
+                    await InvokeAsync(StateHasChanged);
+                else
+                {
+                    parseVerseAudioStatus = $"{statusPrefix} skipped.";
+                    continue; // Skip chapters that already have verse audio parsed
+                }
+
+                var localBook = new BiblePlaylist.Shared.Bible.Book() { Number = book.Number, Name = book.Name };
+                localBook.Chapters = new List<BiblePlaylist.Shared.Bible.Chapter>() { new BiblePlaylist.Shared.Bible.Chapter() { Number = chapter.Number, AudioUrl = chapter.AudioUrl } };
+                localBook.Chapters.FirstOrDefault().Verses = chapter.Verses;
+                var partialVersion = new BiblePlaylist.Shared.Bible.Version() { Code = BiblePlaylist.Shared.Structs.Version.NET, Books = new List<BiblePlaylist.Shared.Bible.Book>() { localBook } };
+               var response = await Http.PostAsJsonAsync("Version/parseverseaudio", partialVersion);
+               if (response.IsSuccessStatusCode)
+                {
+                    parseVerseAudioStatus = $"{statusPrefix} parsed successfully.";
+                }
+                else
+                {
+                    parseVerseAudioStatus = $"{statusPrefix} failed to parse: {response.ReasonPhrase}";
+                }
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        
+        parseVerseAudioText = "Parse Verse Audio";
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public async Task<byte[]> DownloadAudioAsync(string fileName)
+    {
+        try
+        {            
+            return await HttpAudio.GetByteArrayAsync(fileName);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error downloading audio: {ex.Message}");
+            return null;
+        }
+    }
+
+}
+
+

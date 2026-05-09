@@ -1,0 +1,35 @@
+steps:
+- task: UseDotNet@2
+  displayName: 'Install .NET Core 9.x SDK'
+  inputs:
+    version: 9.x
+    performMultiLevelLookup: true
+
+- task: DotNetCoreCLI@2
+  inputs:
+    command: 'restore'
+    projects: 'BiblePlaylist/Server/BiblePlaylist.Server.csproj'
+    arguments: '--configuration $(buildConfiguration)'
+  displayName: 'dotnet restore'
+
+- task: DotNetCoreCLI@2
+  inputs:
+    command: 'build'
+    projects: 'BiblePlaylist/Server/BiblePlaylist.Server.csproj'
+    arguments: '--configuration $(buildConfiguration) --no-restore'
+  displayName: 'dotnet build'
+
+- task: DotNetCoreCLI@2
+  displayName: 'dotnet publish (Server only)'
+  inputs:
+    command: 'publish'
+    publishWebProjects: false                # ← Critical: disable auto web project detection
+    projects: 'BiblePlaylist/Server/BiblePlaylist.Server.csproj'   # ← Explicitly target Server
+    arguments: '--configuration $(buildConfiguration) --no-build --output $(Build.ArtifactStagingDirectory)'
+    zipAfterPublish: true                    # ← Optional but recommended: zips output → produces Server.zip or similar
+    modifyOutputPath: false                  # ← Helps keep clean output if needed
+
+- task: PublishBuildArtifacts@1
+  inputs:
+    PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+    ArtifactName: 'drop'
