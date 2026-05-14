@@ -40,7 +40,7 @@ namespace BiblePlaylist.Server
                 options.AddPolicy(name: _corsAllowSpecificOrigins,
                                   policy =>
                                   {
-                                      policy.WithOrigins("https://raw.githubusercontent.com/ocdsoft",
+                                      policy.WithOrigins("https://raw.githubusercontent.com/Hardinsoft",
                                                          "https://localhost:44342,",
                                                          "https://bibleplaylist.azurewebsites.net");
                                   });
