@@ -30,7 +30,16 @@
     protected override void OnInitialized()
     {
         base.OnInitialized();
-        appVersion = fullAppVersion;        
+        // Normalize informational version like "v0.1.9.0+aa2dac77..."
+        var fv = fullAppVersion ?? string.Empty;
+
+        // Remove build metadata starting with '+'
+        var plusIndex = fv.IndexOf('+');
+        if (plusIndex >= 0)
+            fv = fv.Substring(0, plusIndex);
+
+        
+        appVersion = fv;
     }
 
     void DrawerToggle()
