@@ -1,8 +1,8 @@
 steps:
 - task: UseDotNet@2
-  displayName: 'Install .NET Core 9.x SDK'
+  displayName: 'Install .NET Core 10.x SDK'
   inputs:
-    version: 9.x
+    version: 10.x
     performMultiLevelLookup: true
 
 - task: DotNetCoreCLI@2
