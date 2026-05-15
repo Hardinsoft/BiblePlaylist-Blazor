@@ -4,7 +4,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <ServiceWorkerAssetsManifest>service-worker-assets.js</ServiceWorkerAssetsManifest>
     <UserSecretsId>421951bd-8b0c-4012-a616-63a2c50eca3c</UserSecretsId>   
-    <Version>0.1.9.1</Version>
+    <Version>0.2.1.0</Version>
     <Authors>Greg Hardin</Authors>
     <Title>Bible Playlist</Title>
     <PublishTrimmed>false</PublishTrimmed>
