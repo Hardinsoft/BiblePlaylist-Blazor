@@ -1,13 +1,15 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 17
-VisualStudioVersion = 17.5.33502.453
+# Visual Studio Version 18
+VisualStudioVersion = 18.5.11801.241 oobstable
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "BiblePlaylist.Server", "BiblePlaylist\Server\BiblePlaylist.Server.csproj", "{3FE16AA2-54CC-49B4-9F5F-E3615275FEC4}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "BiblePlaylist.Client", "BiblePlaylist\Client\BiblePlaylist.Client.csproj", "{7B6C3A31-A6A3-4D40-8238-A58260372C6A}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "BiblePlaylist.Shared", "BiblePlaylist\Shared\BiblePlaylist.Shared.csproj", "{DBC86F3E-A6C0-4A6D-9408-9980E85DE614}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BiblePlaylist.Tests", "Test\BiblePlaylist.Tests\BiblePlaylist.Tests.csproj", "{633C8928-7460-27AC-7ECE-3E69534AC2CC}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -27,6 +29,10 @@ Global
 		{DBC86F3E-A6C0-4A6D-9408-9980E85DE614}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{DBC86F3E-A6C0-4A6D-9408-9980E85DE614}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{DBC86F3E-A6C0-4A6D-9408-9980E85DE614}.Release|Any CPU.Build.0 = Release|Any CPU
+		{633C8928-7460-27AC-7ECE-3E69534AC2CC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{633C8928-7460-27AC-7ECE-3E69534AC2CC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{633C8928-7460-27AC-7ECE-3E69534AC2CC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{633C8928-7460-27AC-7ECE-3E69534AC2CC}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
