@@ -1,0 +1,30 @@
+# Parker's Session History
+
+## Learnings
+
+### Blazor WASM Debugging Setup (May 16, 2026)
+
+**Issue**: Legacy launch.json with netcoreapp3.1 target, deprecated `blazorwasm` type, and outdated proxy config blocking WASM debugging in VS Code.
+
+**Root Causes Identified**:
+1. Hard-coded path to `netcoreapp3.1` in line 20, but projects target `net10.0`
+2. `blazorwasm` debugger type deprecated — modern VS Code uses `coreclr` type
+3. `inspectUri` proxy path format outdated for modern Chrome/Edge DevTools
+4. No `serverReadyAction` pattern to auto-open browser on server ready
+5. WebRoot path incorrect: pointed to workspace root instead of Client wwwroot
+
+**Solution Applied**:
+- Replaced deprecated `blazorwasm` config with `coreclr` type
+- Updated path to `net10.0` binary output
+- Added `serverReadyAction` with regex pattern to detect "Now listening on" and auto-launch browser
+- Added three configs: debug only, debug + browser, browser-only
+- Updated webRoot to `${workspaceFolder}/BiblePlaylist/Client/wwwroot`
+
+**Verification Steps**:
+1. C# Dev Kit extension required (includes coreclr debugger)
+2. dotnet dev-certs https --trust (HTTPS cert)
+3. F5 with "Launch and Debug Hosted Blazor App" config
+4. Breakpoint in Startup.cs confirms server debugging works
+5. Browser DevTools Sources tab shows .razor files for WASM debugging
+
+**Key Insight**: .NET 10 / Blazor WASM debugging in VS Code requires C# Dev Kit (not old Omnisharp) and coreclr debugger type. Legacy blazorwasm type was removed in VS Code 1.74+.
