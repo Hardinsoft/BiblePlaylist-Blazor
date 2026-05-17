@@ -1,4 +1,4 @@
-﻿@page "/versioninit"
+@page "/versioninit"
 @inject HttpClient Http
 @inject HttpClient HttpAudio
  
@@ -67,13 +67,11 @@
     private string parseVerseAudioText = "Parse Verse Audio";
     private string parseVerseAudioStatus = string.Empty;
     private string updateAudioText = "Remove Audio URL";
-    private string audioUpdateStatus = string.Empty;
-    private HttpClient _httpAudio;
+    private string audioUpdateStatus = string.Empty;    
 
     protected override async Task OnInitializedAsync()
     {
-        await base.OnInitializedAsync();
-        //_httpAudio = httpClientFactory.CreateClient("audio");
+        await base.OnInitializedAsync();        
 
     }
 
@@ -107,7 +105,7 @@
     private async void DownloadChapterAudio()
     {
         downloadChapterAudioText = "Downloading...";
-        //var version = new BiblePlaylist.Shared.Bible.Version { Code = "NET" };
+       
         var version = await Http.GetFromJsonAsync<BiblePlaylist.Shared.Bible.Version>($"Version?key={BiblePlaylist.Shared.Structs.Version.NET}");
         if (version == null)
         {
@@ -153,7 +151,7 @@
     private async void RemoveAudioURL()
     {
         updateAudioText = "Updating...";
-        //var version = new BiblePlaylist.Shared.Bible.Version { Code = "NET" };
+        
         var version = await Http.GetFromJsonAsync<BiblePlaylist.Shared.Bible.Version>($"Version?key={BiblePlaylist.Shared.Structs.Version.NET}");
         if (version == null)
         {
@@ -194,7 +192,7 @@
     private async void UpdatePsalmAudio()
     {
         updatePsalmAudioText = "Updating...";
-        //var version = new BiblePlaylist.Shared.Bible.Version { Code = "NET" };
+        
         var version = await Http.GetFromJsonAsync<BiblePlaylist.Shared.Bible.Version>($"Version?key={BiblePlaylist.Shared.Structs.Version.NET}");
         if (version == null)
         {
@@ -237,7 +235,7 @@
     private async void ParseVerseAudio()
     {
         parseVerseAudioText = "Parsing...";
-        //var version = new BiblePlaylist.Shared.Bible.Version { Code = "NET" };
+        
         var version = await Http.GetFromJsonAsync<BiblePlaylist.Shared.Bible.Version>($"Version?key={BiblePlaylist.Shared.Structs.Version.NET}");
         if (version == null)
         {

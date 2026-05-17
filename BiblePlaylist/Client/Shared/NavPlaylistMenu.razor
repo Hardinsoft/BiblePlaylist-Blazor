@@ -1,4 +1,4 @@
-﻿@using BiblePlaylist.Client.Config
+@using BiblePlaylist.Client.Config
 @using BiblePlaylist.Shared.Data
 @using BiblePlaylist.Shared.Playlist
 @using BiblePlaylist.Client.Events
@@ -26,7 +26,7 @@
         ToggledIcon="@Icons.Material.Filled.Autorenew"
         Color="@Color.Default"
         ToggledColor="@Color.Primary"
-        Title="Toggle Autoplay"
+        title="Toggle Autoplay"
         />
     </MudItem>
     <MudItem md="4" xs="3">
@@ -35,7 +35,7 @@
         ToggledIcon="@Icons.Material.Filled.RepeatOn"
         Color="@Color.Default"
         ToggledColor="@Color.Primary"
-        Title="Toggle Repeat"
+        title="Toggle Repeat"
          />        
     </MudItem>
 </MudGrid>
@@ -83,7 +83,7 @@
                                             @PlaylistName
                                         </MudText>
 
-                                        <MudExpansionPanels MultiExpand="true">
+                                        <MudExpansionPanels multiExpand="true">
                                             @foreach (var chapter in selectedPlaylist.BookChapters)
                                             {
                                                 <MudExpansionPanel Text="@chapter.Display">
@@ -118,7 +118,7 @@
                                                         }
                                                         else
                                                         {
-                                                            <MudList Dense="true" Clickable="false">
+                                                            <MudList Dense="true" clickable="false">
                                                                 @foreach (var segment in chapter.Segments.OrderBy(s => s.VerseStart))
                                                                 {
                                                                     <MudListItem>
@@ -128,7 +128,7 @@
                                                                                 @segment.VoiceText
                                                                             </MudText>
                                                                             <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-3">
-                                                                                Verses @segment.VerseStart@(segment.VerseStart == segment.VerseEnd ? "" : $"–{segment.VerseEnd}")
+                                                                                Verses @segment.VerseStart@(segment.VerseStart == segment.VerseEnd ? "" : $"�{segment.VerseEnd}")
                                                                             </MudText>
 
                                                                             <!-- Verse container -->
