@@ -11,7 +11,7 @@
 
 
 <MudGrid Class="mt-1">
-    <MudItem md="1" xs="3"><MudButton @onclick="SaveVerses">Save</MudButton></MudItem><MudItem md="4" xs="3">
+    <MudItem md="1" xs="3"><AppButton @onclick="SaveVerses">Save</AppButton></MudItem><MudItem md="4" xs="3">
         <MudSwitch @bind-Value="fineTune" Label="Fine tune" Color="Color.Info" />
     </MudItem>
     @foreach (var v in displayVerses)
@@ -20,10 +20,10 @@
             <p style="font-size: large"><strong class="mr-3">@v.Number</strong>@(new MarkupString(v.Html))</p>
         </MudItem>
         <MudItem md="1" xs="4">
-            <MudFab Class="mr-1" StartIcon="@Icons.Material.Filled.PlayCircle" Color="@Color.Dark" @onclick="@(async e => await PlayVerse(v))" Size="Size.Small" />
+            <AppFab Class="mr-1" StartIcon="@Icons.Material.Filled.PlayCircle" Color="@Color.Dark" @onclick="@(async e => await PlayVerse(v))" Size="Size.Small" />
         </MudItem>
         <MudItem md="1" xs="4">
-            <MudFab Class="mr-1" StartIcon="@Icons.Material.Filled.Start" Color="@Color.Dark" @onclick="@(async e => await StartAudioTime(v))" Size="Size.Small" />
+            <AppFab Class="mr-1" StartIcon="@Icons.Material.Filled.Start" Color="@Color.Dark" @onclick="@(async e => await StartAudioTime(v))" Size="Size.Small" />
             @if (fineTune)
             {
                 <MudNumericField @bind-Value="v.AudioStart" Step=".01M"></MudNumericField>
@@ -34,7 +34,7 @@
             }
         </MudItem>
         <MudItem md="1" xs="4">
-            <MudFab Class="mr-1" StartIcon="@Icons.Material.Filled.Stop" Color="@Color.Dark" @onclick="(async e => await StopAudioTime(v))" Size="Size.Small" />
+            <AppFab Class="mr-1" StartIcon="@Icons.Material.Filled.Stop" Color="@Color.Dark" @onclick="(async e => await StopAudioTime(v))" Size="Size.Small" />
             @if (fineTune)
             {
                 <MudNumericField @bind-Value="v.AudioEnd" Step=".01M"></MudNumericField>
