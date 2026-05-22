@@ -23,4 +23,4 @@
 
 ## Current Focus
 
-MudBlazor 8.15.0 migration — PR #4 under review (Dallas & Parker).
+MudBlazor 9.x upgrade completed (v9.0.0, AppButton/AppFab wrappers for defaults, explicit Variant/Color in key components, expanded bUnit migration tests passing). PR #5 ready for visual QA and review.

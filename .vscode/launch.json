@@ -7,7 +7,7 @@
       "request": "launch",
       "preLaunchTask": "build",
       "program": "${workspaceFolder}/BiblePlaylist/Server/bin/Debug/net10.0/BiblePlaylist.Server.dll",
-      "cwd": "${workspaceFolder}/BiblePlaylist/Server",
+      "cwd": "${workspaceFolder}/BiblePlaylist/Server",      
       "env": {
         "ASPNETCORE_ENVIRONMENT": "Development",
         "ASPNETCORE_URLS": "https://localhost:5107",

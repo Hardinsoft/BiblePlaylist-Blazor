@@ -1,0 +1,19 @@
+@using MudBlazor
+@using System.Collections.Generic
+
+<MudButton 
+    Variant="@Variant" 
+    Color="@Color" 
+    Size="@Size"
+    @attributes="AdditionalAttributes">
+    @ChildContent
+</MudButton>
+
+@code {
+    [Parameter] public Variant Variant { get; set; } = Variant.Filled;
+    [Parameter] public Color Color { get; set; } = Color.Primary;
+    [Parameter] public Size Size { get; set; } = Size.Medium;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] 
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+}
