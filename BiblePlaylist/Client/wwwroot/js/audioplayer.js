@@ -60,31 +60,58 @@ window.CheckAudioFile = (player, playerSource, src, autoplay = 0) => {
     }
 }
 
-window.PlayAudioSegment = async (player, playerSource, src, audioStart, audioEnd) => {
+window.PlayAudioSegment = async (player, playerSource, src, audioStart, audioEnd, segmentData, onSegmentEnd) => {
 
     var audio = document.getElementById(player);
-    if (audio != null) {
-        var audioSource = document.getElementById(playerSource);
-        if (audioSource != null) {
-            audioSource.src = src
+    if (audio == null) return;
 
-            if(audio.readyState == 0)
-                audio.load();
-            
-            audio.currentTime = audioStart;
+    var audioSource = document.getElementById(playerSource);
+    if (audioSource == null) return;
 
-            audio.play();
+    audioSource.src = src;
 
-            audio.ontimeupdate = (ev) => {
-                if (audio.currentTime > audioEnd) { 
-                    audio.pause();
-                    audioEnd = audio.duration;
-                }
-                window.AudioCurrentTime = audio.currentTime;
-            };
+    if(audio.readyState == 0)
+        audio.load();
+
+    audio.currentTime = audioStart;
+
+    audio.play();
+
+    // Use setTimeout for controlled stopping
+    const duration = audioEnd - audioStart;
+
+    // Set up the end handler
+    const segmentEndHandler = () => {
+        audio.removeEventListener('timeupdate', segmentTimeUpdateHandler);
+        audio.removeEventListener('ended', segmentEndHandler);
+        
+        // Signal the Blazor component that the segment has ended
+        if (onSegmentEnd) {
+            onSegmentEnd(audio.currentTime, audio.duration);
         }
+    };
+
+    audio.addEventListener('ended', segmentEndHandler);
+    
+    // Use a timeout to force stop and trigger the end handler
+    setTimeout(() => {
+        if (audio && audio.pause) {
+            audio.pause();
+            audio.currentTime = 0; // Reset position
+        }
+        // Manually trigger the end handler logic
+        if (onSegmentEnd) {
+            onSegmentEnd(audio.currentTime, audio.duration);
+        }
+    }, duration * 1000);
+
+    // Event listener for time updates (used for highlighting)
+    function segmentTimeUpdateHandler() {
+        // This function will be called by the Blazor component to handle highlighting
+        window.DotNetHelper.invokeMethodAsync('UpdateSegmentHighlight', audio.currentTime);
     }
-}
+    audio.addEventListener('timeupdate', segmentTimeUpdateHandler);
+}   
 
 window.SetNetObject = (dotNetHelper) => {
     window.DotNetHelper = dotNetHelper;

@@ -11,8 +11,6 @@
 @inject IDelegateLibrary delegateLibrary
 @inject Endpoints endpoints
 
-
-
 <MudGrid Class="mt-1" id="menuGrid" hidden="@(!hide)">
     <MudItem md="4" xs="12">
         <h3 @onclick="ToggleMenu">@selectedPlaylist?.Description</h3>
@@ -69,22 +67,22 @@
                     {
                         <MudItem xs="12" hidden="@hideChapters">
                             <MudGrid>
-                                @if (selectedPlaylist != null)
-                                {                                   
-                                    @if (selectedPlaylist.BookChapters == null || !selectedPlaylist.BookChapters.Any())
-                                    {
-                                        <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="my-4">
-                                            No chapters loaded yet.
-                                        </MudAlert>
-                                    }
-                                    else
-                                    {
-                                        <MudText Typo="Typo.h5" GutterBottom="true" Class="mb-4">
-                                            @PlaylistName
-                                        </MudText>
+                               @if (selectedPlaylist != null)
+                               {                                   
+                                   @if (selectedPlaylist.BookChapters == null || !selectedPlaylist.BookChapters.Any())
+                                   {
+                                       <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="my-4">
+                                           No chapters loaded yet.
+                                       </MudAlert>
+                                   }
+                                   else
+                                   {
+                                       <MudText Typo="Typo.h5" GutterBottom="true" Class="mb-4">
+                                           @PlaylistName
+                                       </MudText>
 
-                                        <MudExpansionPanels multiExpand="true">
-                                            @foreach (var chapter in selectedPlaylist.BookChapters)
+                                       <MudExpansionPanels multiExpand="true">
+                                           @foreach (var chapter in selectedPlaylist.BookChapters)
                                             {
                                                 <MudExpansionPanel Text="@chapter.Display">
                                                     <ChildContent>
@@ -102,7 +100,7 @@
                                                                     @if (chapter.Segments?.Any() == true)
                                                                     {
                                                                         <MudButton Variant="Variant.Text" Color="Color.Primary" Size="Size.Small"
-                                                                                   StartIcon="@Icons.Material.Filled.PlayArrow">
+                                                                                   StartIcon="@Icons.Material.Filled.PlayArrow" @onclick="(() => PlayChapterSequence(chapter))">
                                                                             Play Chapter
                                                                         </MudButton>
                                                                     }
@@ -128,7 +126,7 @@
                                                                                 @segment.VoiceText
                                                                             </MudText>
                                                                             <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-3">
-                                                                                Verses @segment.VerseStart@(segment.VerseStart == segment.VerseEnd ? "" : $"–{segment.VerseEnd}")
+                                                                                Verses @segment.VerseStart@(segment.VerseStart == segment.VerseEnd ? "" : $"ï¿½{segment.VerseEnd}")
                                                                             </MudText>
 
                                                                             <!-- Verse container -->
@@ -138,9 +136,9 @@
                                                                                 {
                                                                                     <div class="d-flex align-start mb-3">
                                                                                         <MudText Typo="Typo.body2"
-                                                                                                 Class="verse-number mr-4 font-weight-medium"
-                                                                                                 Color="Color.Secondary">
-                                                                                            @verse.Number
+                                                                                                Class="verse-number mr-4 font-weight-medium"
+                                                                                                Color="Color.Secondary">
+                                                                                               @verse.Number
                                                                                         </MudText>
                                                                                         <div class="flex-grow-1 verse-text">
                                                                                             @((MarkupString)verse.Html)
@@ -157,7 +155,7 @@
                                                 </MudExpansionPanel>
                                             }
                                         </MudExpansionPanels>
-                                    }
+                                   }
                                 }
                             </MudGrid>
                         </MudItem>
@@ -166,7 +164,6 @@
             }
         </MudList>
     </MudItem>
-
 
 </MudGrid>
 <MudPaper Class="mb-5">
@@ -188,6 +185,10 @@
     private BiblePlaylist.Shared.Data.UserSettings userSettings;
     private bool _repeat = false;
 
+    private Library Library { get; set; }
+    private Playlist selectedPlaylist { get; set; }
+    private SegmentPlaybackState currentPlaybackState = new SegmentPlaybackState();
+
     private bool Autoplay
     {
         get => _autoplay;
@@ -208,8 +209,6 @@
         }
     }
 
-    private Library Library { get; set; }
-    private Playlist selectedPlaylist { get; set; }
     [Parameter]
     public string PlaylistName { get; set; }
     protected override async Task OnParametersSetAsync()
@@ -374,6 +373,76 @@
         await localStorage.SetItemAsync<BiblePlaylist.Shared.Data.UserSettings>("userName_settings", userSettings);
     }
 
+    // --- NEW/UPDATED SEGMENT PLAYBACK LOGIC ---
+
+    private async Task PlayChapterSequence(BookChapter chapter)
+    {
+        if (chapter.Segments == null || !chapter.Segments.Any()) return;
+
+        // Reset state and start the sequence
+        currentPlaybackState = new SegmentPlaybackState();
+        await PlaySegmentSequence(chapter.Segments.OrderBy(s => s.VerseStart).ToList());
+    }
+
+    private async Task PlaySegment(Segment segment)
+    {
+        if (segment == null ) return;
+
+        // 1. Determine the audio source (using chapter audio as fallback/primary)
+        var audioUrl =  chapterAudio; 
+        
+        // 2. Define the callback action that will run when JS signals completion
+        // We use a local method reference to handle the callback from JS.
+        // The JS function must be updated to call back to this Blazor method.
+        
+        // We pass the segment data and a unique identifier for the callback.
+        await js.InvokeVoidAsync("PlayAudioSegment", 
+            "fullChapterAudioPlayer", 
+            "fullChapterAudioSource", 
+            audioUrl, 
+            0, // Start time (assuming 0 for now, needs refinement)
+            1, // End time (assuming 1 for now, needs refinement)
+            segment, 
+            js.InvokeVoidAsync("HandleSegmentEnd", segment.VoiceText) // Pass a unique ID for tracking
+        );
+    }
+
+    private async Task PlaySegmentSequence(List<Segment> segments)
+    {
+        if (segments == null || !segments.Any()) return;
+
+        // Reset state and start the sequence
+        currentPlaybackState = new SegmentPlaybackState();
+        await PlaySegmentSequenceRecursive(segments, 0);
+    }
+
+    private async Task PlaySegmentSequenceRecursive(List<Segment> segments, int index)
+    {
+        if (index >= segments.Count)
+        {
+            // End of segments reached
+            if (_repeat && segments.Any())
+            {
+                // Loop back to the beginning
+                await PlaySegmentSequenceRecursive(segments, 0);
+            }
+            else
+            {
+                // Sequence finished
+                await js.InvokeVoidAsync("ScrollToTop");
+                delegateLibrary.NotifyChapterChanged(this, new BiblePlaylist.Client.Delegates.EventArgs<SelectedBookChapter>(SelectedBookChapter));
+            }
+            return;
+        }
+
+        var segment = segments[index];
+        
+        // Play the current segment and wait for its completion callback
+        await PlaySegment(segment);
+    }
+    // --- END NEW/UPDATED SEGMENT PLAYBACK LOGIC ---
+
+
     [JSInvokable]
     public async Task ChapterEnded()
     {
@@ -385,5 +454,9 @@
 
         if (_autoplay)
             await ChapterForward();
-    }
+    }    
+    
 }
+
+
+
