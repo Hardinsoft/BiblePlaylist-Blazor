@@ -4,7 +4,8 @@ var FILE_NAME = "";
 
 window.AudioCurrentTime = 0;
 
-window.LoadAudioFile = async (player, playerSource, src, autoplay = 0, repeat = 0) => {
+// Modified LoadAudioFile function to accept a handleFinished callback
+window.LoadAudioFile = async (player, playerSource, src, autoplay = 0, repeat = 0, handleFinished) => {
     
     var audio = document.getElementById(player);   
     if (audio != null) {
@@ -60,7 +61,8 @@ window.CheckAudioFile = (player, playerSource, src, autoplay = 0) => {
     }
 }
 
-window.PlayAudioSegment = async (player, playerSource, src, audioStart, audioEnd, segmentData, onSegmentEnd) => {
+// Modified PlayAudioSegment function to accept a handleFinished callback
+window.PlayAudioSegment = async (player, playerSource, src, audioStart, audioEnd, segmentData, onSegmentEnd, handleFinished) => {
 
     var audio = document.getElementById(player);
     if (audio == null) return;
@@ -86,9 +88,9 @@ window.PlayAudioSegment = async (player, playerSource, src, audioStart, audioEnd
         audio.removeEventListener('ended', segmentEndHandler);
         
         // Signal the Blazor component that the segment has ended
-        if (onSegmentEnd) {
-            onSegmentEnd(audio.currentTime, audio.duration);
-        }
+        //if (onSegmentEnd) {
+        //    onSegmentEnd(audio.currentTime, audio.duration);
+        //}
     };
 
     audio.addEventListener('ended', segmentEndHandler);
@@ -100,17 +102,22 @@ window.PlayAudioSegment = async (player, playerSource, src, audioStart, audioEnd
             audio.currentTime = 0; // Reset position
         }
         // Manually trigger the end handler logic
-        if (onSegmentEnd) {
-            onSegmentEnd(audio.currentTime, audio.duration);
-        }
+       // if (onSegmentEnd) {
+       //     onSegmentEnd(audio.currentTime, audio.duration);
+       // }
     }, duration * 1000);
 
     // Event listener for time updates (used for highlighting)
     function segmentTimeUpdateHandler() {
         // This function will be called by the Blazor component to handle highlighting
-        window.DotNetHelper.invokeMethodAsync('UpdateSegmentHighlight', audio.currentTime);
+        //window.DotNetHelper.invokeMethodAsync('UpdateSegmentHighlight', audio.currentTime);
     }
     audio.addEventListener('timeupdate', segmentTimeUpdateHandler);
+
+    // Call the provided handleFinished callback when playback finishes
+    audio.onended = () => {
+        handleFinished(audio);
+    };
 }   
 
 window.SetNetObject = (dotNetHelper) => {
@@ -150,13 +157,11 @@ function isCached() {
 //    };
 //});
 
-//const cache = await window.caches.open(cacheName);
-//console.log("Open cache");
-//cachedResponse = await cache.match(src);
-//if (cachedResponse) {
-//    console.log("Found cached response");
-//    audioSource.src = cachedResponse;
-//}
-//else {
-//    console.log("Cache not found, load from online resource");
-//}
+const audioEl = document.getElementById('my-audio-player');
+
+const handleFinished = (element) => {
+    console.log("Playback sequence finished successfully.");
+    // Perform actions here (e.g., move to next slide)
+};
+
+//window.PlayAudioSegment(audioEl, '', '', 0, 10, null, null, handleFinished);

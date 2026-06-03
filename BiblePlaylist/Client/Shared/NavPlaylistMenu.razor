@@ -126,7 +126,7 @@
                                                                                 @segment.VoiceText
                                                                             </MudText>
                                                                             <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-3">
-                                                                                Verses @segment.VerseStart@(segment.VerseStart == segment.VerseEnd ? "" : $"�{segment.VerseEnd}")
+                                                                                Verses @segment.VerseStart@(segment.VerseStart == segment.VerseEnd ? "" : $"{segment.VerseEnd}")
                                                                             </MudText>
 
                                                                             <!-- Verse container -->
@@ -188,6 +188,8 @@
     private Library Library { get; set; }
     private Playlist selectedPlaylist { get; set; }
     private SegmentPlaybackState currentPlaybackState = new SegmentPlaybackState();
+    private DotNetObjectReference<NavPlaylistMenu> objRef;
+    private bool _netObjectIsSet = false;
 
     private bool Autoplay
     {
@@ -226,6 +228,33 @@
         Repeat = userSettings.Repeat;
         await InvokeAsync(StateHasChanged);
         await base.OnParametersSetAsync();
+
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await base.OnAfterRenderAsync(firstRender);
+
+        if (objRef == null)
+            objRef = DotNetObjectReference.Create(this);
+
+        try
+        {
+            if (!_netObjectIsSet)
+            {
+                await js.InvokeVoidAsync("SetNetObject", objRef);
+                _netObjectIsSet = true;
+                await js.InvokeVoidAsync("console.log", "SetNetObject Set");
+            }
+        }
+        catch (System.Exception ex)
+        {
+            await js.InvokeVoidAsync("console.log", $"SetNetObject failed {ex.Message}");
+        }
+
+        await js.InvokeVoidAsync("console.log", "NavBibleMenu afterrender called");
+
+        
 
     }
 
@@ -378,7 +407,7 @@
     private async Task PlayChapterSequence(BookChapter chapter)
     {
         if (chapter.Segments == null || !chapter.Segments.Any()) return;
-
+        chapterAudio = $"{endpoints.Audio}{chapter.Chapter?.AudioUrl}";
         // Reset state and start the sequence
         currentPlaybackState = new SegmentPlaybackState();
         await PlaySegmentSequence(chapter.Segments.OrderBy(s => s.VerseStart).ToList());
@@ -400,8 +429,8 @@
             "fullChapterAudioPlayer", 
             "fullChapterAudioSource", 
             audioUrl, 
-            0, // Start time (assuming 0 for now, needs refinement)
-            1, // End time (assuming 1 for now, needs refinement)
+            segment.Verses.FirstOrDefault().AudioStart,// Start time (assuming 0 for now, needs refinement)
+            segment.Verses.LastOrDefault().AudioEnd, // End time (assuming 1 for now, needs refinement)
             segment, 
             js.InvokeVoidAsync("HandleSegmentEnd", segment.VoiceText) // Pass a unique ID for tracking
         );
