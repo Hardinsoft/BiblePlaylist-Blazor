@@ -10,3 +10,5 @@ Response style rules:
 - For simple code requests, questions, or straightforward tasks — give short, direct answers.
 - Always respond in clear English.
 
+
+
