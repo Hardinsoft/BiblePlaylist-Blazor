@@ -191,12 +191,17 @@
     private DotNetObjectReference<NavPlaylistMenu> objRef;
     private bool _netObjectIsSet = false;
 
+    private Segment _currentlyPlayingSegment = null;
+    private bool _isPlaying = false;
+    private bool _isSequencePlaying = false; // Flag to prevent accidental calls while a sequence is running
+
     private bool Autoplay
     {
         get => _autoplay;
         set
         {
             _autoplay = value;
+            // Use Task.Run to prevent blocking the UI thread during async updates
             Task.Run(async () => await AutoplayChanged(_autoplay));
         }
     }
@@ -214,7 +219,7 @@
     [Parameter]
     public string PlaylistName { get; set; }
     protected override async Task OnParametersSetAsync()
-    {       
+    {
         if (userSettings == null)
             userSettings = await localStorage.GetItemAsync<BiblePlaylist.Shared.Data.UserSettings>("userName_settings");
 
@@ -228,10 +233,9 @@
         Repeat = userSettings.Repeat;
         await InvokeAsync(StateHasChanged);
         await base.OnParametersSetAsync();
-
     }
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
+     protected async override Task OnAfterRenderAsync(bool firstRender)
     {
         await base.OnAfterRenderAsync(firstRender);
 
@@ -251,11 +255,6 @@
         {
             await js.InvokeVoidAsync("console.log", $"SetNetObject failed {ex.Message}");
         }
-
-        await js.InvokeVoidAsync("console.log", "NavBibleMenu afterrender called");
-
-        
-
     }
 
     protected override async Task OnInitializedAsync()
@@ -293,7 +292,8 @@
 
     protected async Task LoadAudio()
     {
-        await js.InvokeVoidAsync("LoadAudioFile", "fullChapterAudioPlayer", "fullChapterAudioSource", chapterAudio, true);
+        // Modified: Pass a placeholder for the final completion callback handler
+        await js.InvokeVoidAsync("LoadAudioFile", "fullChapterAudioPlayer", "fullChapterAudioSource", chapterAudio, _autoplay, _repeat, null);
         HasPlayed = true;
     }
 
@@ -373,7 +373,8 @@
         {
             HasPlayed = true;
             loadAudio = true;
-            await js.InvokeVoidAsync("LoadAudioFile", "fullChapterAudioPlayer", "fullChapterAudioSource", chapterAudio, _autoplay, _repeat);
+            // Modified: Passing null for the new optional callback argument
+            await js.InvokeVoidAsync("LoadAudioFile", "fullChapterAudioPlayer", "fullChapterAudioSource", chapterAudio, _autoplay, _repeat, null);
         }
         catch (Exception ex) 
         {
@@ -406,42 +407,18 @@
 
     private async Task PlayChapterSequence(BookChapter chapter)
     {
-        if (chapter.Segments == null || !chapter.Segments.Any()) return;
-        chapterAudio = $"{endpoints.Audio}{chapter.Chapter?.AudioUrl}";
-        // Reset state and start the sequence
-        currentPlaybackState = new SegmentPlaybackState();
-        await PlaySegmentSequence(chapter.Segments.OrderBy(s => s.VerseStart).ToList());
-    }
+        if (chapter == null || chapter.Segments == null || !chapter.Segments.Any())
+            return;
 
-    private async Task PlaySegment(Segment segment)
-    {
-        if (segment == null ) return;
-
-        // 1. Determine the audio source (using chapter audio as fallback/primary)
-        var audioUrl =  chapterAudio; 
-        
-        // 2. Define the callback action that will run when JS signals completion
-        // We use a local method reference to handle the callback from JS.
-        // The JS function must be updated to call back to this Blazor method.
-        
-        // We pass the segment data and a unique identifier for the callback.
-        await js.InvokeVoidAsync("PlayAudioSegment", 
-            "fullChapterAudioPlayer", 
-            "fullChapterAudioSource", 
-            audioUrl, 
-            segment.Verses.FirstOrDefault().AudioStart,// Start time (assuming 0 for now, needs refinement)
-            segment.Verses.LastOrDefault().AudioEnd, // End time (assuming 1 for now, needs refinement)
-            segment, 
-            js.InvokeVoidAsync("HandleSegmentEnd", segment.VoiceText) // Pass a unique ID for tracking
-        );
+        var orderedSegments = chapter.Segments.OrderBy(s => s.VerseStart).ToList();
+        await PlaySegmentSequence(orderedSegments);
     }
 
     private async Task PlaySegmentSequence(List<Segment> segments)
     {
+        // This function manages the entire flow: Segment A -> Segment B -> ...
         if (segments == null || !segments.Any()) return;
 
-        // Reset state and start the sequence
-        currentPlaybackState = new SegmentPlaybackState();
         await PlaySegmentSequenceRecursive(segments, 0);
     }
 
@@ -449,42 +426,127 @@
     {
         if (index >= segments.Count)
         {
-            // End of segments reached
+            // Base Case: End of all segments in this chapter
             if (_repeat && segments.Any())
             {
-                // Loop back to the beginning
+                // Loop back to the beginning of the segment list
                 await PlaySegmentSequenceRecursive(segments, 0);
+                return;
             }
             else
             {
-                // Sequence finished
+                // Sequence fully complete (or not repeating)
+                _isPlaying = false;
                 await js.InvokeVoidAsync("ScrollToTop");
                 delegateLibrary.NotifyChapterChanged(this, new BiblePlaylist.Client.Delegates.EventArgs<SelectedBookChapter>(SelectedBookChapter));
+                return;
             }
-            return;
         }
 
         var segment = segments[index];
-        
-        // Play the current segment and wait for its completion callback
+        _currentlyPlayingSegment = segment;
+        _isPlaying = true;
+
+        // 1. Call JS to start playback. The await keyword PAUSES the C# thread here.
         await PlaySegment(segment);
     }
-    // --- END NEW/UPDATED SEGMENT PLAYBACK LOGIC ---
 
+    private async Task PlaySegment(Segment segment)
+    {
+        if (segment == null) return;
+
+        // 2. The callback handler provided to JS to execute when the segment finishes
+        // We pass a lambda that captures the required context for the JS to call back to.
+        Func<double, double, Task> segmentCompletionCallback = async (current, duration) => await HandleSegmentCompletion(segment);
+        
+        // 3. Call the JS function, passing the C# method as the final argument.
+        await js.InvokeVoidAsync("PlayAudioSegment", 
+        "fullChapterAudioPlayer", 
+        "fullChapterAudioSource", 
+        chapterAudio, 
+        segment.Verses.FirstOrDefault()?.AudioStart ?? 0, // Start time
+        segment.Verses.LastOrDefault()?.AudioEnd ?? 10,  // End time
+        segment, 
+        segmentCompletionCallback // This is the callback that JS will trigger
+        //(element) => { /* Cleanup logic here */ } // The final cleanup handler
+    );
+    }
+
+    // *** THE NEW CORE HANDLER ***
+    [JSInvokable]
+    public async Task HandleSegmentCompletion(Segment completedSegment)
+    {
+        // This method is called from JavaScript when the audio element signals 'ended'.
+        
+        if (!(_isPlaying && _currentlyPlayingSegment != null))
+        {
+             // Safety check: If we received a signal but aren't actively playing, do nothing.
+             return;
+        }
+        
+        // 1. Check if the current segment is the one that was expected to finish.
+        // (This is vital if the JS fires the event for the wrong segment).
+        if (completedSegment != _currentlyPlayingSegment)
+        {
+             Console.WriteLine("WARNING: (HandleSegmentCompletion)Received completion signal for a segment that is not currently expected.");
+             return;
+        }
+
+        // 2. Handle the state transition:
+        if (_autoplay)
+        {
+            // If autoplay is ON, and we are not at the end of the chapter/playlist, we continue the sequence.
+            var allSegments = selectedPlaylist.BookChapters.SelectMany(bc => bc.Segments).OrderBy(s => s.VerseStart).ToList();
+            await PlaySegmentSequenceRecursive(
+                allSegments, 
+                GetNextSegmentIndex(completedSegment) // This finds the next segment index
+            );
+        }
+        else if (_repeat)
+        {
+            // If repeat is ON, and we are at the end, we loop back.
+            // (This will be handled by the recursive function's base case).
+        }
+        else
+        {
+            // If autoplay is OFF, we simply stop and wait for user input.
+            _isPlaying = false;
+            await js.InvokeVoidAsync("console.log", "Playback paused by user setting.");
+        }
+    }
+    
+    // Helper to find the index of the *next* segment in the list.
+    private int GetNextSegmentIndex(Segment completedSegment)
+    {
+        var allSegments = selectedPlaylist.BookChapters.SelectMany(bc => bc.Segments).OrderBy(s => s.VerseStart).ToList();
+        var currentIndex = allSegments.IndexOf(completedSegment);
+        
+        // Return the index of the next item, wrapping around if necessary.
+        return (currentIndex + 1) % allSegments.Count;
+    }
+
+    // --- Remaining Methods (ChapterEnded, etc.) ---
 
     [JSInvokable]
     public async Task ChapterEnded()
     {
+        // This is now the primary signal when the *entire chapter* playback finishes
         if (_repeat)
         {
-            await js.InvokeVoidAsync("LoadAudioFile", "fullChapterAudioPlayer", "fullChapterAudioSource", chapterAudio, _autoplay, _repeat);
-            return;
+            // If repeating, restart the whole chapter sequence
+            await PlayChapterSequence(selectedPlaylist.BookChapters.FirstOrDefault());
         }
-
-        if (_autoplay)
+        else if (_autoplay)
+        {
+            // If autoplay is on, move to the next chapter.
             await ChapterForward();
-    }    
-    
+        }
+        else
+        {
+            // If autoplay is off, simply stop and wait.
+            _isPlaying = false;
+        }
+    }
 }
 
 

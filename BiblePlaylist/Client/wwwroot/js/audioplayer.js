@@ -1,21 +1,20 @@
 const cacheNamePrefix = 'local-cache-';
 const cacheName = cacheNamePrefix + 'biblePlaylist';
-var FILE_NAME = "";
+var FILE_NAME = '';
 
-window.AudioCurrentTime = 0;
+let activeAudioElement = null;
 
-// Modified LoadAudioFile function to accept a handleFinished callback
 window.LoadAudioFile = async (player, playerSource, src, autoplay = 0, repeat = 0, handleFinished) => {
     
     var audio = document.getElementById(player);   
     if (audio != null) {
         var audioSource = document.getElementById(playerSource);
         if (audioSource != null) {            
-                audioSource.src = src
+                audioSource.src = src;
            
             //try {
                 audio.load();
-            //} catch (e) { }
+            //} catch (e) { []
 
 
             if (autoplay == 1) {
@@ -43,7 +42,8 @@ window.GetAudioCurrentTime = () => {
 }
 
 window.CheckAudioFile = (player, playerSource, src, autoplay = 0) => {    
-    var audio = document.getElementById(player);
+// ... existing code ...
+var audio = document.getElementById(player);
     if (audio != null) {
         var audioSource = document.getElementById(playerSource);
         if (audioSource != null) {
@@ -61,71 +61,66 @@ window.CheckAudioFile = (player, playerSource, src, autoplay = 0) => {
     }
 }
 
-// Modified PlayAudioSegment function to accept a handleFinished callback
-window.PlayAudioSegment = async (player, playerSource, src, audioStart, audioEnd, segmentData, onSegmentEnd, handleFinished) => {
+// Centralized handler for when ANY audio playback stops
+const handlePlaybackEnd = (element) => {
+    if (element && element.onended) {
+        // Clean up the listener immediately after it fires
+        element.removeEventListener('ended', handlePlaybackEnd);
+    }
+    // Trigger the C# callback provided by the component
+    if (window.DotNetHelper && window.DotNetHelper.invokeMethodAsync) {
+        window.DotNetHelper.invokeMethodAsync('HandleSegmentCompletion', element);
+    }
+};
 
+// Function to play any segment, regardless of chapter context
+window.PlayAudioSegment = async (player, playerSource, src, audioStart, audioEnd, segmentData, onSegmentEnd, handleFinished) => {
+    
     var audio = document.getElementById(player);
     if (audio == null) return;
-
+    
     var audioSource = document.getElementById(playerSource);
     if (audioSource == null) return;
 
     audioSource.src = src;
 
     if(audio.readyState == 0)
-        audio.load();
-
+    audio.load();
+    
     audio.currentTime = audioStart;
-
     audio.play();
 
-    // Use setTimeout for controlled stopping
-    const duration = audioEnd - audioStart;
+    // 1. Setup robust event listeners BEFORE any timeout logic
+    audio.removeEventListener('ended', handlePlaybackEnd); // Prevent duplicates
+    audio.addEventListener('ended', handlePlaybackEnd);
 
-    // Set up the end handler
-    const segmentEndHandler = () => {
-        audio.removeEventListener('timeupdate', segmentTimeUpdateHandler);
-        audio.removeEventListener('ended', segmentEndHandler);
-        
-        // Signal the Blazor component that the segment has ended
-        //if (onSegmentEnd) {
-        //    onSegmentEnd(audio.currentTime, audio.duration);
-        //}
+    // 2. Store the necessary cleanup/callback data on the element itself for reliable cleanup
+    audio.dataset.segmentEndHandler = onSegmentEnd;
+    audio.dataset.segmentDuration = (audioEnd - audioStart) * 1000;
+
+
+    // 3. The dedicated end handler that executes when the browser signals 'ended'
+    const segmentEndHandler = (ev) => {
+        // IMPORTANT: The handlePlaybackEnd function attached via event listener will handle cleanup.
+        // We just need to ensure the callback is fired.
     };
 
-    audio.addEventListener('ended', segmentEndHandler);
-    
-    // Use a timeout to force stop and trigger the end handler
+    // 4. Use a timeout as a HARD FAILSAFE stop, which triggers the same cleanup logic
     setTimeout(() => {
         if (audio && audio.pause) {
             audio.pause();
             audio.currentTime = 0; // Reset position
         }
         // Manually trigger the end handler logic
-       // if (onSegmentEnd) {
-       //     onSegmentEnd(audio.currentTime, audio.duration);
-       // }
-    }, duration * 1000);
-
-    // Event listener for time updates (used for highlighting)
-    function segmentTimeUpdateHandler() {
-        // This function will be called by the Blazor component to handle highlighting
-        //window.DotNetHelper.invokeMethodAsync('UpdateSegmentHighlight', audio.currentTime);
-    }
-    audio.addEventListener('timeupdate', segmentTimeUpdateHandler);
-
-    // Call the provided handleFinished callback when playback finishes
-    audio.onended = () => {
-        handleFinished(audio);
-    };
-}   
-
+        handlePlaybackEnd(audio);
+    }, (audioEnd - audioStart) * 1000 + 100); // Add buffer time
+}
 window.SetNetObject = (dotNetHelper) => {
     window.DotNetHelper = dotNetHelper;
 }
 
-window.NavToBook = (bookName) => {     
-    var httpPath = '//' + location.host + location.pathname;    
+window.NavToBook = (bookName) => {
+    var httpPath = '//' + location.host + location.pathname;
     document.location.href = httpPath + bookName;
 }
 
@@ -164,4 +159,7 @@ const handleFinished = (element) => {
     // Perform actions here (e.g., move to next slide)
 };
 
-//window.PlayAudioSegment(audioEl, '', '', 0, 10, null, null, handleFinished);
+//window.SetNetObject(window.DotNetHelper);
+
+
+
