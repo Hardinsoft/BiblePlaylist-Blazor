@@ -24,5 +24,10 @@ The application is structured in three distinct, communicating tiers:
 *   When making changes, always consider the impact on the **Shared** project first, as this dictates the necessary changes on both the Client and Server.
 *   API interactions must flow through the **Controllers** on the Server, which call the **Repository** interfaces.
 
----
 **Reminder for Future Sessions:** Please ask to review the "Project Context Summary" or refer to the file path `.continue/project_summary.md` to refresh my memory on this project's structure and conventions.
+
+**REPOSITORY DETAILS:**
+*   **Owner:** Hardinsoft
+*   **Repository:** BiblePlaylist-Blazor
+*   **Purpose:** This repository holds the complete source code for the Blazor WASM application.
+*   **Key Folders:** Client, Server, Shared.
