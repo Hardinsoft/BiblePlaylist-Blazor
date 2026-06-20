@@ -1,6 +1,6 @@
 ---
-name: Use run_terminal_command for current date/time on Windows
-description: Forces the agent to query the live Windows system clock via the terminal tool instead of hallucinating the date or time.
+name: Current date/time
+description: Forces the agent to query the live system clock via the terminal tool instead of hallucinating the date or time.
 ---
 
 **MANDATORY BEHAVIOR FOR DATE / TIME QUERIES**
@@ -23,6 +23,5 @@ Whenever the user asks for the current date, time, datetime, "what time is it", 
 Desired Response Format
 First line (raw system time):
 Today's date and time, according to the system clock, is 2026-06-07 23:33:09 -07:00.
-Then immediately follow with the plain English translation:
-The date and time 2026-06-07 23:33:09 -07:00 translates to:
+Then immediately follow with a formatted display of that date and time like the sample below:
 June 7th, 2026, at 11:33 PM (23:33) in the time zone seven hours behind Coordinated Universal Time (UTC-7).
