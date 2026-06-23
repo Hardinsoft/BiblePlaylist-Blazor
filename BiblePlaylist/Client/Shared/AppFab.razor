@@ -1,0 +1,14 @@
+@using MudBlazor
+@using System.Collections.Generic
+
+<MudFab 
+    Color="@Color" 
+    Size="@Size"
+    @attributes="AdditionalAttributes" />
+
+@code {
+    [Parameter] public Color Color { get; set; } = Color.Secondary;
+    [Parameter] public Size Size { get; set; } = Size.Medium;
+    [Parameter(CaptureUnmatchedValues = true)] 
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+}

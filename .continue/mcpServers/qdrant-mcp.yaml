@@ -1,0 +1,11 @@
+name: MudBlazor Docs
+version: 0.1.0
+schema: v1
+mcpServers:
+  - name: qdrant
+    command: npx
+    args:
+      - better-qdrant-mcp-server
+    env:
+      QDRANT_URL: "http://10.0.0.8:6333"
+      COLLECTION_NAME: "mudblazor_docs"

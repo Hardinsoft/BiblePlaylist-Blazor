@@ -23,4 +23,6 @@
 
 ## Current Focus
 
-MudBlazor 8.15.0 migration — PR #4 under review (Dallas & Parker).
+## Current Focus
+
+MudBlazor 9.x upgrade completed. PR #5 merged. Ready to triage and begin work on the next feature/bug fix.

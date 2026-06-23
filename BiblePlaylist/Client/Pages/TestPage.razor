@@ -1,0 +1,15 @@
+@page "/test-exit-prompt"
+@* Assuming MudExitPrompt is available and handles navigation guards automatically *@
+
+<MudExitPrompt Disabled="_isDisabled" UseNativePrompt="_useNativePrompt" />
+
+<MudStack Spacing="2">
+    <MudSwitch Label="Disabled" @bind-Value="_isDisabled" Color="Color.Primary" />
+    <MudSwitch Label="Use native prompt" @bind-Value="_useNativePrompt" Color="Color.Primary" />
+    <MudButton Variant="Variant.Outlined" Color="Color.Primary" Href="/">Test navigation</MudButton>
+</MudStack>
+
+@code {
+    private bool _isDisabled;
+    private bool _useNativePrompt;
+}

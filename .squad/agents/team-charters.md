@@ -28,6 +28,13 @@
 **Authority:** Test verdict (pass/fail); can request code changes for testability
 **Scope:** Test/ project and test strategies for all layers
 
+**Learnings:**
+- 2026-05-17T14:05:00.638-07:00: Adopted reflection-first testing patterns for MudBlazor v9 to keep tests compiling across versions.
+- Async method testing: prefer invoking Task-returning methods via reflection and awaiting them in bUnit tests.
+- Component defaults: assert DOM class tokens and attributes rather than private fields.
+- Converters: detect IConverter via Type.GetType and run round-trip verification via reflection when present.
+
+
 ### Scribe — Session Logger
 
 **Role:** Memory and logging
