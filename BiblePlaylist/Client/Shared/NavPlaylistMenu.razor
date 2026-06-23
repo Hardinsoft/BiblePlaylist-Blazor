@@ -97,16 +97,7 @@
                                                                     <MudText Typo="Typo.body2" Color="Color.Secondary">
                                                                         @(chapter.Segments?.Count == 1 ? "1 segment" : $"{chapter.Segments?.Count ?? 0} segments")
                                                                     </MudText>
-                                                                </MudItem>
-                                                                <MudItem xs="12" sm="4" Class="d-flex justify-end align-center">
-                                                                    @if (chapter.Segments?.Any() == true)
-                                                                    {
-                                                                        <MudButton Variant="Variant.Text" Color="Color.Primary" Size="Size.Small"
-                                                                                   StartIcon="@Icons.Material.Filled.PlayArrow">
-                                                                            Play Chapter
-                                                                        </MudButton>
-                                                                    }
-                                                                </MudItem>
+                                                                </MudItem>                                                                
                                                             </MudGrid>
                                                         </MudPaper>
 
@@ -128,7 +119,7 @@
                                                                                 @segment.VoiceText
                                                                             </MudText>
                                                                             <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-3">
-                                                                                Verses @segment.VerseStart@(segment.VerseStart == segment.VerseEnd ? "" : $"–{segment.VerseEnd}")
+                                                                                Verses @segment.VerseStart@(segment.VerseStart == segment.VerseEnd ? "" : $"{segment.VerseEnd}")
                                                                             </MudText>
 
                                                                             <!-- Verse container -->
