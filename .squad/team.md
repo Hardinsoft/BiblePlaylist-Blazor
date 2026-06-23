@@ -23,4 +23,6 @@
 
 ## Current Focus
 
-MudBlazor 9.x upgrade completed (v9.0.0, AppButton/AppFab wrappers for defaults, explicit Variant/Color in key components, expanded bUnit migration tests passing). PR #5 ready for visual QA and review.
+## Current Focus
+
+MudBlazor 9.x upgrade completed. PR #5 merged. Ready to triage and begin work on the next feature/bug fix.

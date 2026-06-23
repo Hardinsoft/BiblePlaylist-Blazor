@@ -7,10 +7,10 @@
       "request": "launch",
       "preLaunchTask": "build",
       "program": "${workspaceFolder}/BiblePlaylist/Server/bin/Debug/net10.0/BiblePlaylist.Server.dll",
-      "cwd": "${workspaceFolder}/BiblePlaylist/Server",      
+      "cwd": "${workspaceFolder}/BiblePlaylist/Server",
       "env": {
         "ASPNETCORE_ENVIRONMENT": "Development",
-        "ASPNETCORE_URLS": "https://localhost:5107",
+        "ASPNETCORE_URLS": "https://localhost:5107",   // ← match your actual port
         "DOTNET_LAUNCH_PROFILE": "BiblePlaylist.Server"
       }
     },
@@ -18,9 +18,9 @@
       "name": "Browser",
       "type": "blazorwasm",
       "request": "attach",
-      "browser": "edge",
-      "timeout": 30000,
-      "url": "https://localhost:5107",
+      "browser": "edge",           // or "chrome"
+      "timeout": 120000,           // Increased from 30s — very helpful
+      "url": "https://localhost:5107",   // ← MUST match exactly what Server opens
       "webRoot": "${workspaceFolder}/BiblePlaylist/Client/wwwroot"
     }
   ],
