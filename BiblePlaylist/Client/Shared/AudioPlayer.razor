@@ -4,9 +4,10 @@
     MudBlazor controls, and JS interop.
     Supports sharing between PlaylistPlayer.razor and NavPlaylistMenu.razor
 
-    Fixed: Changed Autoplay, Repeat, and HasPlayed to simple auto-properties 
-    to eliminate the "should be auto property" analyzer warning.
-    Blazor @bind- now handles EventCallback invocation automatically.
+    Fixed: 
+    - Renamed EventCallback from OnAudioEnded to OnEnded to resolve name collision 
+      with the [JSInvokable] method OnAudioEnded().
+    - This eliminates the compiler error "The type 'AudioPlayer' already contains a definition for 'OnAudioEnded'".
 *@
 @using Microsoft.JSInterop
 @inject IJSRuntime JSRuntime
@@ -93,8 +94,9 @@
     [Parameter]
     public bool AutoAdvanceOnSourceChange { get; set; } = true;
 
+    // Renamed from OnAudioEnded to avoid collision with the JSInvokable method below
     [Parameter]
-    public EventCallback OnAudioEnded { get; set; }
+    public EventCallback OnEnded { get; set; }
 
     private DotNetObjectReference<AudioPlayer> _dotNetRef;
 
@@ -154,7 +156,7 @@
             return;
         }
 
-        await OnAudioEnded.InvokeAsync();
+        await OnEnded.InvokeAsync();
     }
 
     public async ValueTask DisposeAsync()
