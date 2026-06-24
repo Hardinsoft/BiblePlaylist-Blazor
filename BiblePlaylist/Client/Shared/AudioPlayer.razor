@@ -1,0 +1,191 @@
+@* 
+    Reusable AudioPlayer.razor
+    Expertly extracted for BiblePlaylist to encapsulate audio playback, 
+    MudBlazor controls, and JS interop.
+    Supports sharing between PlaylistPlayer.razor and NavPlaylistMenu.razor
+*@
+@using Microsoft.JSInterop
+@inject IJSRuntime JSRuntime
+@implements IAsyncDisposable
+
+<div class="audio-player-container mud-elevation-2 pa-2 rounded">
+    @if (!HasPlayed)
+    {
+        <div class="d-flex justify-center">
+            <MudFab StartIcon="@Icons.Material.Filled.PlayCircle" 
+                    Size="Size.Large" 
+                    Color="Color.Primary" 
+                    OnClick="HandleInitialPlay"
+                    aria-label="Play audio" />
+        </div>
+    }
+    else
+    {
+        <audio id="@PlayerId" 
+               controls="@ShowNativeControls"
+               class="w-100"
+               style="max-height: 40px;">
+            <source id="@($"{PlayerId}Source")" src="@SourceUrl" type="audio/mpeg" />
+            Your browser does not support the audio element.
+        </audio>
+    }
+
+    @if (ShowSettingsToggles)
+    {
+        <MudGrid Justify="Justify.SpaceAround" Class="mt-3">
+            <MudItem xs="6" Class="d-flex justify-center">
+                <MudToggleIconButton @bind-Toggled="Autoplay"
+                    Icon="@Icons.Material.Filled.Autorenew"
+                    ToggledIcon="@Icons.Material.Filled.Autorenew"
+                    Color="Color.Default"
+                    ToggledColor="Color.Primary"
+                    Title="Autoplay next chapter" />
+                <MudText Typo="Typo.caption" Class="ml-1 align-self-center">Autoplay</MudText>
+            </MudItem>
+            <MudItem xs="6" Class="d-flex justify-center">
+                <MudToggleIconButton @bind-Toggled="Repeat"
+                    Icon="@Icons.Material.Filled.Repeat"
+                    ToggledIcon="@Icons.Material.Filled.RepeatOn"
+                    Color="Color.Default"
+                    ToggledColor="Color.Primary"
+                    Title="Repeat current track" />
+                <MudText Typo="Typo.caption" Class="ml-1 align-self-center">Repeat</MudText>
+            </MudItem>
+        </MudGrid>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public string PlayerId { get; set; } = "blazorAudioPlayer";
+
+    [Parameter]
+    public string SourceUrl { get; set; } = string.Empty;
+
+    private bool _hasPlayed = false;
+    [Parameter]
+    public bool HasPlayed
+    {
+        get => _hasPlayed;
+        set
+        {
+            if (_hasPlayed != value)
+            {
+                _hasPlayed = value;
+                HasPlayedChanged.InvokeAsync(value);
+            }
+        }
+    }
+    [Parameter]
+    public EventCallback<bool> HasPlayedChanged { get; set; }
+
+    private bool _autoplay;
+    [Parameter]
+    public bool Autoplay
+    {
+        get => _autoplay;
+        set
+        {
+            if (_autoplay != value)
+            {
+                _autoplay = value;
+                AutoplayChanged.InvokeAsync(value);
+            }
+        }
+    }
+    [Parameter]
+    public EventCallback<bool> AutoplayChanged { get; set; }
+
+    private bool _repeat;
+    [Parameter]
+    public bool Repeat
+    {
+        get => _repeat;
+        set
+        {
+            if (_repeat != value)
+            {
+                _repeat = value;
+                RepeatChanged.InvokeAsync(value);
+            }
+        }
+    }
+    [Parameter]
+    public EventCallback<bool> RepeatChanged { get; set; }
+
+    [Parameter]
+    public bool ShowNativeControls { get; set; } = true;
+
+    [Parameter]
+    public bool ShowSettingsToggles { get; set; } = true;
+
+    [Parameter]
+    public bool AutoAdvanceOnSourceChange { get; set; } = true;
+
+    [Parameter]
+    public EventCallback OnAudioEnded { get; set; }
+
+    private DotNetObjectReference<AudioPlayer> _dotNetRef;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _dotNetRef = DotNetObjectReference.Create(this);
+        await base.OnInitializedAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await JSRuntime.InvokeVoidAsync("initializeAudioPlayer", PlayerId, _dotNetRef);
+        }
+        await base.OnAfterRenderAsync(firstRender);
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (AutoAdvanceOnSourceChange && HasPlayed && !string.IsNullOrWhiteSpace(SourceUrl))
+        {
+            await LoadCurrentTrack();
+        }
+        await base.OnParametersSetAsync();
+    }
+
+    private async Task HandleInitialPlay()
+    {
+        if (string.IsNullOrWhiteSpace(SourceUrl)) return;
+
+        HasPlayed = true;
+        StateHasChanged();
+        await LoadCurrentTrack();
+    }
+
+    private async Task LoadCurrentTrack()
+    {
+        if (string.IsNullOrWhiteSpace(SourceUrl)) return;
+
+        await JSRuntime.InvokeVoidAsync("loadAudioFile",
+            PlayerId,
+            $"{PlayerId}Source",
+            SourceUrl,
+            Autoplay,
+            Repeat);
+    }
+
+    [JSInvokable]
+    public async Task OnAudioEnded()
+    {
+        if (Repeat)
+        {
+            await LoadCurrentTrack();
+            return;
+        }
+
+        await OnAudioEnded.InvokeAsync();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _dotNetRef?.Dispose();
+    }
+}
