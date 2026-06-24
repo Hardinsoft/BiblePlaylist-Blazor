@@ -3,6 +3,10 @@
     Expertly extracted for BiblePlaylist to encapsulate audio playback, 
     MudBlazor controls, and JS interop.
     Supports sharing between PlaylistPlayer.razor and NavPlaylistMenu.razor
+
+    Fixed: Changed Autoplay, Repeat, and HasPlayed to simple auto-properties 
+    to eliminate the "should be auto property" analyzer warning.
+    Blazor @bind- now handles EventCallback invocation automatically.
 *@
 @using Microsoft.JSInterop
 @inject IJSRuntime JSRuntime
@@ -62,54 +66,21 @@
     [Parameter]
     public string SourceUrl { get; set; } = string.Empty;
 
-    private bool _hasPlayed = false;
     [Parameter]
-    public bool HasPlayed
-    {
-        get => _hasPlayed;
-        set
-        {
-            if (_hasPlayed != value)
-            {
-                _hasPlayed = value;
-                HasPlayedChanged.InvokeAsync(value);
-            }
-        }
-    }
+    public bool HasPlayed { get; set; }
+
     [Parameter]
     public EventCallback<bool> HasPlayedChanged { get; set; }
 
-    private bool _autoplay;
     [Parameter]
-    public bool Autoplay
-    {
-        get => _autoplay;
-        set
-        {
-            if (_autoplay != value)
-            {
-                _autoplay = value;
-                AutoplayChanged.InvokeAsync(value);
-            }
-        }
-    }
+    public bool Autoplay { get; set; }
+
     [Parameter]
     public EventCallback<bool> AutoplayChanged { get; set; }
 
-    private bool _repeat;
     [Parameter]
-    public bool Repeat
-    {
-        get => _repeat;
-        set
-        {
-            if (_repeat != value)
-            {
-                _repeat = value;
-                RepeatChanged.InvokeAsync(value);
-            }
-        }
-    }
+    public bool Repeat { get; set; }
+
     [Parameter]
     public EventCallback<bool> RepeatChanged { get; set; }
 
@@ -156,7 +127,9 @@
         if (string.IsNullOrWhiteSpace(SourceUrl)) return;
 
         HasPlayed = true;
+        await HasPlayedChanged.InvokeAsync(true);
         StateHasChanged();
+
         await LoadCurrentTrack();
     }
 
