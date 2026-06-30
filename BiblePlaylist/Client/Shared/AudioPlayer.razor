@@ -4,10 +4,9 @@
     MudBlazor controls, and JS interop.
     Supports sharing between PlaylistPlayer.razor and NavPlaylistMenu.razor
 
-    Fixed: 
-    - Renamed EventCallback from OnAudioEnded to OnEnded to resolve name collision 
-      with the [JSInvokable] method OnAudioEnded().
-    - Cleaned up source element id interpolation.
+    Supports both:
+    - Full chapter playback (default)
+    - Segment/time-range playback (when SegmentStart and SegmentEnd are provided)
 *@
 @using Microsoft.JSInterop
 @inject IJSRuntime JSRuntime
@@ -44,7 +43,7 @@
                     ToggledIcon="@Icons.Material.Filled.Autorenew"
                     Color="Color.Default"
                     ToggledColor="Color.Primary"
-                    Title="Autoplay next chapter" />
+                    Title="Autoplay next" />
                 <MudText Typo="Typo.caption" Class="ml-1 align-self-center">Autoplay</MudText>
             </MudItem>
             <MudItem xs="6" Class="d-flex justify-center">
@@ -53,7 +52,7 @@
                     ToggledIcon="@Icons.Material.Filled.RepeatOn"
                     Color="Color.Default"
                     ToggledColor="Color.Primary"
-                    Title="Repeat current track" />
+                    Title="Repeat current" />
                 <MudText Typo="Typo.caption" Class="ml-1 align-self-center">Repeat</MudText>
             </MudItem>
         </MudGrid>
@@ -91,8 +90,12 @@
     [Parameter]
     public bool ShowSettingsToggles { get; set; } = true;
 
+    // Optional segment time range (in seconds). When both are provided, plays only this range.
     [Parameter]
-    public bool AutoAdvanceOnSourceChange { get; set; } = true;
+    public decimal? SegmentStart { get; set; }
+
+    [Parameter]
+    public decimal? SegmentEnd { get; set; }
 
     // Renamed from OnAudioEnded to avoid collision with the JSInvokable method below
     [Parameter]
@@ -117,7 +120,7 @@
 
     protected override async Task OnParametersSetAsync()
     {
-        if (AutoAdvanceOnSourceChange && HasPlayed && !string.IsNullOrWhiteSpace(SourceUrl))
+        if (HasPlayed && !string.IsNullOrWhiteSpace(SourceUrl))
         {
             await LoadCurrentTrack();
         }
@@ -139,18 +142,32 @@
     {
         if (string.IsNullOrWhiteSpace(SourceUrl)) return;
 
-        await JSRuntime.InvokeVoidAsync("loadAudioFile",
-            PlayerId,
-            $"{PlayerId}Source",
-            SourceUrl,
-            Autoplay,
-            Repeat);
+        bool isSegment = SegmentStart.HasValue && SegmentEnd.HasValue;
+
+        if (isSegment)
+        {
+            await JSRuntime.InvokeVoidAsync("PlayAudioSegment",
+                PlayerId,
+                $"{PlayerId}Source",
+                SourceUrl,
+                SegmentStart.Value,
+                SegmentEnd.Value);
+        }
+        else
+        {
+            await JSRuntime.InvokeVoidAsync("loadAudioFile",
+                PlayerId,
+                $"{PlayerId}Source",
+                SourceUrl,
+                Autoplay,
+                Repeat);
+        }
     }
 
     [JSInvokable]
     public async Task OnAudioEnded()
     {
-        if (Repeat)
+        if (Repeat && !SegmentStart.HasValue)
         {
             await LoadCurrentTrack();
             return;
