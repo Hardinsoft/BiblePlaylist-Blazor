@@ -20,34 +20,35 @@
     </MudItem>
 </MudGrid>
 
-<!-- === REUSABLE AUDIO PLAYER === -->
+<!-- === REUSABLE AUDIO PLAYER (now supports segments) === -->
 <AudioPlayer @ref="audioPlayer"
              PlayerId="fullChapterAudioPlayer"
              SourceUrl="@chapterAudio"
              @bind-HasPlayed="HasPlayed"
              @bind-Autoplay="Autoplay"
              @bind-Repeat="Repeat"
-             OnEnded="ChapterEnded"
-             ShowSettingsToggles="true"
-             AutoAdvanceOnSourceChange="true" />
+             SegmentStart="@CurrentSegmentStart"
+             SegmentEnd="@CurrentSegmentEnd"
+             OnEnded="OnTrackEnded"
+             ShowSettingsToggles="true" />
 
-<!-- Chapter navigation -->
+<!-- Segment/Chapter navigation -->
 <MudGrid Class="mt-1 stickyChapterNav" hidden="@(!hide)">
     <MudItem md="4" xs="3">
         <MudFab StartIcon="@Icons.Material.Filled.ChevronLeft" 
                 Color="@Color.Dark" 
-                @onclick="ChapterBack" 
+                @onclick="GoToPreviousSegment" 
                 Size="Size.Small" />
     </MudItem>
     <MudItem md="4" xs="3">
         <MudFab StartIcon="@Icons.Material.Filled.ChevronRight" 
                 Color="@Color.Dark" 
-                @onclick="ChapterForward" 
+                @onclick="GoToNextSegment" 
                 Size="Size.Small" />
     </MudItem>
 </MudGrid>
 
-<!-- Playlist + Chapter/Verse expansion UI (unchanged) -->
+<!-- Playlist + Chapter/Verse expansion UI -->
 <MudGrid Class="mt-1" hidden="@(!hide)">
     <MudItem xs="12">
         <MudList T="string">
@@ -100,10 +101,10 @@
                                                         }
                                                         else
                                                         {
-                                                            <MudList Dense="true" clickable="false">
+                                                            <MudList Dense="true" clickable="true">
                                                                 @foreach (var segment in chapter.Segments.OrderBy(s => s.VerseStart))
                                                                 {
-                                                                    <MudListItem>
+                                                                    <MudListItem @onclick="@(e => PlaySpecificSegment(chapter, segment))">
                                                                         <ChildContent>
                                                                             <MudText Typo="Typo.subtitle2" Class="mb-1">
                                                                                 @segment.VoiceText
@@ -197,6 +198,18 @@
         }
     }
 
+    // === SEGMENT PLAYBACK SUPPORT ===
+    private List<(BookChapter Chapter, Segment Segment)> _playlistSegments = new();
+    private int _currentSegmentIndex = -1;
+
+    private (BookChapter Chapter, Segment Segment)? CurrentSegment =>
+        (_currentSegmentIndex >= 0 && _currentSegmentIndex < _playlistSegments.Count)
+            ? _playlistSegments[_currentSegmentIndex]
+            : null;
+
+    private decimal? CurrentSegmentStart => CurrentSegment?.Segment.Verses?.FirstOrDefault()?.AudioStart;
+    private decimal? CurrentSegmentEnd => CurrentSegment?.Segment.Verses?.LastOrDefault()?.AudioEnd;
+
     protected override async Task OnParametersSetAsync()
     {
         if (userSettings == null)
@@ -265,8 +278,73 @@
         selectedPlaylist.BookChapters.Clear();
         inflatedBookChapters.ForEach(bc => selectedPlaylist.BookChapters.Add(bc));
 
+        // Build flat segment list for sequential playback
+        _playlistSegments.Clear();
+        foreach (var chapter in selectedPlaylist.BookChapters)
+        {
+            if (chapter.Segments != null)
+            {
+                foreach (var segment in chapter.Segments.OrderBy(s => s.VerseStart))
+                {
+                    _playlistSegments.Add((chapter, segment));
+                }
+            }
+        }
+
+        _currentSegmentIndex = _playlistSegments.Any() ? 0 : -1;
+
         hideChapters = !hideChapters;
         await InvokeAsync(StateHasChanged);
+
+        // Auto-start first segment if autoplay is enabled
+        if (Autoplay && _currentSegmentIndex >= 0)
+        {
+            await PlayCurrentSegment();
+        }
+    }
+
+    private async Task PlayCurrentSegment()
+    {
+        if (CurrentSegment == null) return;
+
+        var (chapter, segment) = CurrentSegment.Value;
+
+        SelectedBookChapter = new SelectedBookChapter
+        {
+            SelectedBook = chapter.BookNumber,
+            SelectedChapter = chapter.ChapterNumber
+        };
+
+        chapterText = $"{chapter.Book?.Name ?? "Chapter"} {chapter.ChapterNumber} • Segment {segment.VerseStart}- {segment.VerseEnd}";
+        chapterAudio = $"{endpoints.Audio}{chapter.Chapter?.AudioUrl}";
+
+        HasPlayed = true;
+        await InvokeAsync(StateHasChanged);
+
+        // AudioPlayer will pick up SegmentStart/SegmentEnd via binding
+        await js.InvokeVoidAsync("ScrollToTop");
+    }
+
+    private async Task PlaySpecificSegment(BookChapter chapter, Segment segment)
+    {
+        _currentSegmentIndex = _playlistSegments.FindIndex(s => s.Segment == segment);
+        await PlayCurrentSegment();
+    }
+
+    private async Task GoToNextSegment()
+    {
+        if (_playlistSegments.Count == 0) return;
+
+        _currentSegmentIndex = (_currentSegmentIndex + 1) % _playlistSegments.Count;
+        await PlayCurrentSegment();
+    }
+
+    private async Task GoToPreviousSegment()
+    {
+        if (_playlistSegments.Count == 0) return;
+
+        _currentSegmentIndex = (_currentSegmentIndex - 1 + _playlistSegments.Count) % _playlistSegments.Count;
+        await PlayCurrentSegment();
     }
 
     protected async Task SelectBookChapter(BookChapter bookChapter, bool toggleMenu = true)
@@ -285,6 +363,9 @@
             chapterAudio = $"{endpoints.Audio}{bookChapter.Chapter?.AudioUrl}";
         }
 
+        // Clear segment tracking when manually selecting a full chapter
+        _currentSegmentIndex = -1;
+
         if (toggleMenu)
         {
             hideChapters = !hideChapters;
@@ -298,57 +379,8 @@
         delegateLibrary.NotifyChapterChanged(this, new BiblePlaylist.Client.Delegates.EventArgs<SelectedBookChapter>(SelectedBookChapter));
     }
 
-    private async Task SelectBookChapter()
-    {
-        var target = selectedPlaylist?.BookChapters?
-            .FirstOrDefault(bc => bc.ChapterNumber == SelectedBookChapter?.SelectedChapter && bc.BookNumber == SelectedBookChapter?.SelectedBook);
-
-        if (target != null)
-            await SelectBookChapter(target, false);
-    }
-
-    protected async Task ChapterBack()
-    {
-        if (SelectedBookChapter == null) return;
-
-        if (SelectedBookChapter.SelectedChapter > 1)
-        {
-            SelectedBookChapter.SelectedChapter--;
-        }
-        else if (SelectedBookChapter.SelectedBook > 1)
-        {
-            SelectedBookChapter.SelectedBook--;
-            var prevBook = bibleMenu?.Books?.FirstOrDefault(b => b.Number == SelectedBookChapter.SelectedBook);
-            if (prevBook != null)
-                SelectedBookChapter.SelectedChapter = prevBook.Chapters.Max(c => c.Number);
-        }
-        else return;
-
-        await SelectBookChapter();
-    }
-
-    protected async Task ChapterForward()
-    {
-        if (SelectedBookChapter == null || bibleMenu?.Books == null) return;
-
-        var currentBook = bibleMenu.Books.FirstOrDefault(b => b.Number == SelectedBookChapter.SelectedBook);
-        if (currentBook == null) return;
-
-        int lastChapter = currentBook.Chapters.Max(c => c.Number);
-
-        if (SelectedBookChapter.SelectedChapter < lastChapter)
-        {
-            SelectedBookChapter.SelectedChapter++;
-        }
-        else if (SelectedBookChapter.SelectedBook < 66)
-        {
-            SelectedBookChapter.SelectedBook++;
-            SelectedBookChapter.SelectedChapter = 1;
-        }
-        else return;
-
-        await SelectBookChapter();
-    }
+    protected async Task ChapterBack() => await GoToPreviousSegment();
+    protected async Task ChapterForward() => await GoToNextSegment();
 
     private async Task AutoplayChanged(bool newState)
     {
@@ -362,15 +394,22 @@
         await localStorage.SetItemAsync("userName_settings", userSettings);
     }
 
-    [JSInvokable]
-    public async Task ChapterEnded()
+    private async Task OnTrackEnded()
     {
         if (Repeat)
         {
+            await PlayCurrentSegment();
             return;
         }
 
-        if (Autoplay)
+        if (Autoplay && _playlistSegments.Any())
+        {
+            await GoToNextSegment();
+        }
+        else
+        {
+            // Fallback to old chapter behavior if not in segment mode
             await ChapterForward();
+        }
     }
 }
