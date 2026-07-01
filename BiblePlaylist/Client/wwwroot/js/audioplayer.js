@@ -102,17 +102,17 @@ window.PlayAudioSegment = async (player, playerSource, src, audioStart, audioEnd
     if (audio != null) {
         var audioSource = document.getElementById(playerSource);
         if (audioSource != null) {
-            audioSource.src = src;
-
-            if (audio.readyState == 0)
-                audio.load();
-
+            audioSource.src = src;            
+            audio.load();
             audio.currentTime = audioStart;
             audio.play().catch(() => {});
 
             audio.ontimeupdate = (ev) => {
                 if (audio.currentTime > audioEnd) {
                     audio.pause();
+                    if (window._audioDotNetHelpers[player]) {
+                        window._audioDotNetHelpers[player].invokeMethodAsync('OnAudioEnded');
+                    }
                 }
                 window.AudioCurrentTime = audio.currentTime;
             };

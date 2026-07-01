@@ -396,10 +396,11 @@
         await localStorage.SetItemAsync("userName_settings", userSettings);
     }
 
-    private async Task OnTrackEnded()
+    protected async Task OnTrackEnded()
     {
-        if (Repeat)
+        if (Repeat && ((_currentSegmentIndex + 1) == _playlistSegments.Count))
         {
+            _currentSegmentIndex = 0;
             await PlayCurrentSegment();
             return;
         }
