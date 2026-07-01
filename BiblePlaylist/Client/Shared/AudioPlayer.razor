@@ -101,6 +101,10 @@
     [Parameter]
     public EventCallback OnEnded { get; set; }
 
+    private string _lastSourceUrl;
+    private decimal? _lastSegmentStart;
+    private decimal? _lastSegmentEnd;
+
     private DotNetObjectReference<AudioPlayer> _dotNetRef;
 
     protected override async Task OnInitializedAsync()
@@ -120,8 +124,15 @@
 
     protected override async Task OnParametersSetAsync()
     {
-        if (HasPlayed && !string.IsNullOrWhiteSpace(SourceUrl))
+        bool sourceChanged = SourceUrl != _lastSourceUrl;
+        bool segmentChanged = SegmentStart != _lastSegmentStart || SegmentEnd != _lastSegmentEnd;
+
+        if (HasPlayed && !string.IsNullOrWhiteSpace(SourceUrl) && (sourceChanged || segmentChanged))
         {
+            _lastSourceUrl = SourceUrl;
+            _lastSegmentStart = SegmentStart;
+            _lastSegmentEnd = SegmentEnd;
+
             await LoadCurrentTrack();
         }
         await base.OnParametersSetAsync();
@@ -162,6 +173,11 @@
                 Autoplay,
                 Repeat);
         }
+    }
+
+    public async Task ReloadAsync()
+    {
+        await LoadCurrentTrack();
     }
 
     [JSInvokable]
