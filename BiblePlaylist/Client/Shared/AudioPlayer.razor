@@ -1,0 +1,199 @@
+@* 
+    Reusable AudioPlayer.razor
+    Expertly extracted for BiblePlaylist to encapsulate audio playback, 
+    MudBlazor controls, and JS interop.
+    Supports sharing between PlaylistPlayer.razor and NavPlaylistMenu.razor
+
+    Supports both:
+    - Full chapter playback (default)
+    - Segment/time-range playback (when SegmentStart and SegmentEnd are provided)
+*@
+@using Microsoft.JSInterop
+@inject IJSRuntime JSRuntime
+@implements IAsyncDisposable
+
+<div class="audio-player-container mud-elevation-2 pa-2 rounded">
+    @if (!HasPlayed)
+    {
+        <div class="d-flex justify-center">
+            <MudFab StartIcon="@Icons.Material.Filled.PlayCircle" 
+                    Size="Size.Large" 
+                    Color="Color.Primary" 
+                    OnClick="HandleInitialPlay"
+                    aria-label="Play audio" />
+        </div>
+    }
+    else
+    {
+        <audio id="@PlayerId" 
+               controls="@ShowNativeControls"
+               class="w-100"
+               style="max-height: 40px;">
+            <source id="@($"{PlayerId}Source")" src="@SourceUrl" type="audio/mpeg" />
+            Your browser does not support the audio element.
+        </audio>
+    }
+
+    @if (ShowSettingsToggles)
+    {
+        <MudGrid Justify="Justify.SpaceAround" Class="mt-3">
+            <MudItem xs="6" Class="d-flex justify-center">
+                <MudToggleIconButton @bind-Toggled="Autoplay"
+                    Icon="@Icons.Material.Filled.Autorenew"
+                    ToggledIcon="@Icons.Material.Filled.Autorenew"
+                    Color="Color.Default"
+                    ToggledColor="Color.Primary"
+                    Title="Autoplay next" />
+                <MudText Typo="Typo.caption" Class="ml-1 align-self-center">Autoplay</MudText>
+            </MudItem>
+            <MudItem xs="6" Class="d-flex justify-center">
+                <MudToggleIconButton @bind-Toggled="Repeat"
+                    Icon="@Icons.Material.Filled.Repeat"
+                    ToggledIcon="@Icons.Material.Filled.RepeatOn"
+                    Color="Color.Default"
+                    ToggledColor="Color.Primary"
+                    Title="Repeat current" />
+                <MudText Typo="Typo.caption" Class="ml-1 align-self-center">Repeat</MudText>
+            </MudItem>
+        </MudGrid>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public string PlayerId { get; set; } = "blazorAudioPlayer";
+
+    [Parameter]
+    public string SourceUrl { get; set; } = string.Empty;
+
+    [Parameter]
+    public bool HasPlayed { get; set; }
+
+    [Parameter]
+    public EventCallback<bool> HasPlayedChanged { get; set; }
+
+    [Parameter]
+    public bool Autoplay { get; set; }
+
+    [Parameter]
+    public EventCallback<bool> AutoplayChanged { get; set; }
+
+    [Parameter]
+    public bool Repeat { get; set; }
+
+    [Parameter]
+    public EventCallback<bool> RepeatChanged { get; set; }
+
+    [Parameter]
+    public bool ShowNativeControls { get; set; } = true;
+
+    [Parameter]
+    public bool ShowSettingsToggles { get; set; } = true;
+
+    // Optional segment time range (in seconds). When both are provided, plays only this range.
+    [Parameter]
+    public decimal? SegmentStart { get; set; }
+
+    [Parameter]
+    public decimal? SegmentEnd { get; set; }
+
+    // Renamed from OnAudioEnded to avoid collision with the JSInvokable method below
+    [Parameter]
+    public EventCallback OnEnded { get; set; }
+
+    private string _lastSourceUrl;
+    private decimal? _lastSegmentStart;
+    private decimal? _lastSegmentEnd;
+
+    private DotNetObjectReference<AudioPlayer> _dotNetRef;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _dotNetRef = DotNetObjectReference.Create(this);
+        await base.OnInitializedAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await JSRuntime.InvokeVoidAsync("initializeAudioPlayer", PlayerId, _dotNetRef);
+        }
+        await base.OnAfterRenderAsync(firstRender);
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        bool sourceChanged = SourceUrl != _lastSourceUrl;
+        bool segmentChanged = SegmentStart != _lastSegmentStart || SegmentEnd != _lastSegmentEnd;
+
+        if (HasPlayed && !string.IsNullOrWhiteSpace(SourceUrl) && (sourceChanged || segmentChanged))
+        {
+            _lastSourceUrl = SourceUrl;
+            _lastSegmentStart = SegmentStart;
+            _lastSegmentEnd = SegmentEnd;
+
+            await LoadCurrentTrack();
+        }
+        await base.OnParametersSetAsync();
+    }
+
+    private async Task HandleInitialPlay()
+    {
+        if (string.IsNullOrWhiteSpace(SourceUrl)) return;
+
+        HasPlayed = true;
+        await HasPlayedChanged.InvokeAsync(true);
+        StateHasChanged();
+
+        await LoadCurrentTrack();
+    }
+
+    private async Task LoadCurrentTrack()
+    {
+        if (string.IsNullOrWhiteSpace(SourceUrl)) return;
+
+        bool isSegment = SegmentStart.HasValue && SegmentEnd.HasValue;
+
+        if (isSegment)
+        {
+            await JSRuntime.InvokeVoidAsync("PlayAudioSegment",
+                PlayerId,
+                $"{PlayerId}Source",
+                SourceUrl,
+                SegmentStart.Value,
+                SegmentEnd.Value);
+        }
+        else
+        {
+            await JSRuntime.InvokeVoidAsync("loadAudioFile",
+                PlayerId,
+                $"{PlayerId}Source",
+                SourceUrl,
+                Autoplay,
+                Repeat);
+        }
+    }
+
+    public async Task ReloadAsync()
+    {
+        await LoadCurrentTrack();
+    }
+
+    [JSInvokable]
+    public async Task OnAudioEnded()
+    {
+        if (Repeat && !SegmentStart.HasValue)
+        {
+            await LoadCurrentTrack();
+            return;
+        }
+
+        await OnEnded.InvokeAsync();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _dotNetRef?.Dispose();
+    }
+}
