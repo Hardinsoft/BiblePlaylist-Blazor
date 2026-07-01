@@ -305,7 +305,7 @@
 
     private async Task PlayCurrentSegment()
     {
-        if (CurrentSegment == null) return;
+        if (CurrentSegment == null || audioPlayer == null) return;
 
         var (chapter, segment) = CurrentSegment.Value;
 
@@ -321,7 +321,9 @@
         HasPlayed = true;
         await InvokeAsync(StateHasChanged);
 
-        // AudioPlayer will pick up SegmentStart/SegmentEnd via binding
+        // Force reload in case chapter changed
+        await audioPlayer.ReloadAsync();
+
         await js.InvokeVoidAsync("ScrollToTop");
     }
 
