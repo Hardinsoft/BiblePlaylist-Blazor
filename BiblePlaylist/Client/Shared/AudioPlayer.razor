@@ -38,7 +38,9 @@
     {
         <MudGrid Justify="Justify.SpaceAround" Class="mt-3">
             <MudItem xs="6" Class="d-flex justify-center">
-                <MudToggleIconButton @bind-Toggled="Autoplay"
+                <MudToggleIconButton 
+                    Toggled="@Autoplay"
+                    ToggledChanged="SetAutoplay"
                     Icon="@Icons.Material.Filled.Autorenew"
                     ToggledIcon="@Icons.Material.Filled.Autorenew"
                     Color="Color.Default"
@@ -47,7 +49,9 @@
                 <MudText Typo="Typo.caption" Class="ml-1 align-self-center">Autoplay</MudText>
             </MudItem>
             <MudItem xs="6" Class="d-flex justify-center">
-                <MudToggleIconButton @bind-Toggled="Repeat"
+                <MudToggleIconButton
+                    Toggled="@Repeat"
+                    ToggledChanged="SetRepeat"
                     Icon="@Icons.Material.Filled.Repeat"
                     ToggledIcon="@Icons.Material.Filled.RepeatOn"
                     Color="Color.Default"
@@ -147,6 +151,18 @@
         StateHasChanged();
 
         await LoadCurrentTrack();
+    }
+
+    private async Task SetAutoplay(bool value)
+    {
+        Autoplay = value;
+        await AutoplayChanged.InvokeAsync(value);
+    }
+
+    private async Task SetRepeat(bool value)
+    {
+        Repeat = value;
+        await RepeatChanged.InvokeAsync(value);
     }
 
     private async Task LoadCurrentTrack()

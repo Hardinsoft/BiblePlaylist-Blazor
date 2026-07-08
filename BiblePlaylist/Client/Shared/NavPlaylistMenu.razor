@@ -155,7 +155,7 @@
     private BiblePlaylist.Shared.Data.UserSettings userSettings;
 
     private bool _autoplay = false;
-    private bool Autoplay
+    public bool Autoplay
     {
         get => _autoplay;
         set
@@ -190,6 +190,8 @@
 
     protected override async Task OnParametersSetAsync()
     {
+        await base.OnParametersSetAsync();
+
         if (userSettings == null)
             userSettings = await localStorage.GetItemAsync<BiblePlaylist.Shared.Data.UserSettings>("userName_settings");
 
@@ -202,7 +204,7 @@
         Autoplay = userSettings.Autoplay;
         Repeat = userSettings.Repeat;
 
-        await base.OnParametersSetAsync();
+        
     }
 
     protected override async Task OnInitializedAsync()
