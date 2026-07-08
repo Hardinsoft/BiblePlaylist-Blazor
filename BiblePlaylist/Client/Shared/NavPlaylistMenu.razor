@@ -56,7 +56,7 @@
             {            
                 foreach (var p in Library.Playlists)
                 {
-                    <MudListItem @onclick="@(e => SelectPlaylist(p))" id="@p.Name.Replace(" ","_")">@p.Name</MudListItem>
+                    <MudListItem Class="mb-5" @onclick="@(e => SelectPlaylist(p))" id="@p.Name.Replace(" ","_")">@p.Name</MudListItem>
                     @if (Library != null && !hideChapters && selectedPlaylist?.Name == p.Name)
                     {
                         <MudItem xs="12" hidden="@hideChapters">
@@ -70,28 +70,13 @@
                                         </MudAlert>
                                     }
                                     else
-                                    {
-                                        <MudText Typo="Typo.h5" GutterBottom="true" Class="mb-4">
-                                            @PlaylistName
-                                        </MudText>
+                                    {                                        
 
                                         <MudExpansionPanels multiExpand="true">
                                             @foreach (var chapter in selectedPlaylist.BookChapters)
                                             {
                                                 <MudExpansionPanel Text="@chapter.Display">
-                                                    <ChildContent>
-                                                        <MudPaper Elevation="1" Class="pa-4 mb-4" Outlined="true">
-                                                            <MudGrid>
-                                                                <MudItem xs="12" sm="8">
-                                                                    <MudText Typo="Typo.subtitle1" Color="Color.Primary">
-                                                                        @chapter.VoiceText
-                                                                    </MudText>
-                                                                    <MudText Typo="Typo.body2" Color="Color.Secondary">
-                                                                        @(chapter.Segments?.Count == 1 ? "1 segment" : $"{chapter.Segments?.Count ?? 0} segments")
-                                                                    </MudText>
-                                                                </MudItem>                                                                
-                                                            </MudGrid>
-                                                        </MudPaper>
+                                                    <ChildContent>                                                        
 
                                                         @if (chapter.Segments == null || !chapter.Segments.Any())
                                                         {
@@ -106,13 +91,6 @@
                                                                 {
                                                                     <MudListItem @onclick="@(e => PlaySpecificSegment(chapter, segment))">
                                                                         <ChildContent>
-                                                                            <MudText Typo="Typo.subtitle2" Class="mb-1">
-                                                                                @segment.VoiceText
-                                                                            </MudText>
-                                                                            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-3">
-                                                                                Verses @segment.VerseStart@(segment.VerseStart == segment.VerseEnd ? "" : $"-{segment.VerseEnd}")
-                                                                            </MudText>
-
                                                                             <div class="verse-container mt-2 mb-4 pl-4 border-l-4 border-primary"
                                                                                  style="border-color: var(--mud-palette-primary); background-color: rgba(0,0,0,0.02); border-radius: 4px; padding: 12px;">
                                                                                 @foreach (var verse in segment.Verses)
@@ -315,7 +293,7 @@
             SelectedChapter = chapter.ChapterNumber
         };
 
-        chapterText = $"{chapter.Book?.Name ?? "Chapter"} {chapter.ChapterNumber} • Segment {segment.VerseStart}- {segment.VerseEnd}";
+        chapterText = $"{chapter.Book?.Name ?? "Chapter"} {chapter.ChapterNumber}: {segment.VerseStart}-{segment.VerseEnd}";
         chapterAudio = $"{endpoints.Audio}{chapter.Chapter?.AudioUrl}";
 
         HasPlayed = true;
