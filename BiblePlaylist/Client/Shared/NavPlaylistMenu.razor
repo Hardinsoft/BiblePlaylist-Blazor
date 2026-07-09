@@ -299,14 +299,25 @@
     {
         if (CurrentSegment == null || audioPlayer == null) return;
 
-        // Pause any currently playing audio first.
-        // This prevents TTS narration from overlapping with the previous segment's audio
-        // when user manually navigates (next/prev/specific segment).
+        // Pause any currently playing audio
         await audioPlayer.PauseAsync();
 
         var (chapter, segment) = CurrentSegment.Value;
 
-        // === TTS: Read playlist description (only for first segment) + BookChapter.VoiceText + Segment.VoiceText ===
+        // === UX: Update the visible chapter/verse text IMMEDIATELY ===
+        // so the user sees the new reference while hearing the VoiceText narration.
+        SelectedBookChapter = new SelectedBookChapter
+        {
+            SelectedBook = chapter.BookNumber,
+            SelectedChapter = chapter.ChapterNumber
+        };
+
+        chapterText = $"{chapter.Book?.Name ?? "Chapter"} {chapter.ChapterNumber}:{segment.VerseStart}-{segment.VerseEnd}";
+
+        // Force the UI (header text) to update right now, before TTS starts
+        await InvokeAsync(StateHasChanged());
+
+        // === TTS: Description (first segment) + BookChapter.VoiceText + Segment.VoiceText ===
         if (_enableTts)
         {
             var textsToSpeak = new List<string>();
@@ -333,21 +344,13 @@
             }
         }
 
-        SelectedBookChapter = new SelectedBookChapter
-        {
-            SelectedBook = chapter.BookNumber,
-            SelectedChapter = chapter.ChapterNumber
-        };
-
-        chapterText = $"{chapter.Book?.Name ?? "Chapter"} {chapter.ChapterNumber}:{segment.VerseStart}-{segment.VerseEnd}";
+        // Only after narration completes do we switch the actual audio source
         chapterAudio = $"{endpoints.Audio}{chapter.Chapter?.AudioUrl}";
 
         HasPlayed = true;
-        await InvokeAsync(StateHasChanged);
+        await InvokeAsync(StateHasChanged());
 
-        // Force reload in case chapter changed
         await audioPlayer.ReloadAsync();
-
         await js.InvokeVoidAsync("ScrollToTop");
     }
 
@@ -399,7 +402,7 @@
         }
 
         HasPlayed = true;
-        await InvokeAsync(StateHasChanged);
+        await InvokeAsync(StateHasChanged());
 
         await js.InvokeVoidAsync("ScrollToTop");
         delegateLibrary.NotifyChapterChanged(this, new BiblePlaylist.Client.Delegates.EventArgs<SelectedBookChapter>(SelectedBookChapter));
