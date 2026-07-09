@@ -295,7 +295,7 @@
             SelectedChapter = chapter.ChapterNumber
         };
 
-        chapterText = $"{chapter.Book?.Name ?? "Chapter"} {chapter.ChapterNumber}: {segment.VerseStart}-{segment.VerseEnd}";
+        chapterText = $"{chapter.Book?.Name ?? "Chapter"} {chapter.ChapterNumber}:{segment.VerseStart}-{segment.VerseEnd}";
         chapterAudio = $"{endpoints.Audio}{chapter.Chapter?.AudioUrl}";
 
         HasPlayed = true;
