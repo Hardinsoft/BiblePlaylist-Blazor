@@ -315,7 +315,7 @@
         chapterText = $"{chapter.Book?.Name ?? "Chapter"} {chapter.ChapterNumber}:{segment.VerseStart}-{segment.VerseEnd}";
 
         // Force the UI (header text) to update right now, before TTS starts
-        await InvokeAsync(StateHasChanged());
+        await InvokeAsync(StateHasChanged);
 
         // === TTS: Description (first segment) + BookChapter.VoiceText + Segment.VoiceText ===
         if (_enableTts)
@@ -348,7 +348,7 @@
         chapterAudio = $"{endpoints.Audio}{chapter.Chapter?.AudioUrl}";
 
         HasPlayed = true;
-        await InvokeAsync(StateHasChanged());
+        await InvokeAsync(StateHasChanged);
 
         await audioPlayer.ReloadAsync();
         await js.InvokeVoidAsync("ScrollToTop");
@@ -402,7 +402,7 @@
         }
 
         HasPlayed = true;
-        await InvokeAsync(StateHasChanged());
+        await InvokeAsync(StateHasChanged);
 
         await js.InvokeVoidAsync("ScrollToTop");
         delegateLibrary.NotifyChapterChanged(this, new BiblePlaylist.Client.Delegates.EventArgs<SelectedBookChapter>(SelectedBookChapter));
