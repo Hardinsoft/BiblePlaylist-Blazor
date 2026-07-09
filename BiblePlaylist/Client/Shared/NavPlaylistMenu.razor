@@ -299,6 +299,11 @@
     {
         if (CurrentSegment == null || audioPlayer == null) return;
 
+        // Pause any currently playing audio first.
+        // This prevents TTS narration from overlapping with the previous segment's audio
+        // when user manually navigates (next/prev/specific segment).
+        await audioPlayer.PauseAsync();
+
         var (chapter, segment) = CurrentSegment.Value;
 
         // === TTS: Read playlist description (only for first segment) + BookChapter.VoiceText + Segment.VoiceText ===

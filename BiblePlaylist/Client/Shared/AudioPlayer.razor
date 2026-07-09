@@ -196,6 +196,18 @@
         await LoadCurrentTrack();
     }
 
+    /// <summary>
+    /// Pauses the underlying audio element. Used by playlist navigation to ensure
+    /// clean handoff between segments when TTS narration is about to start.
+    /// </summary>
+    public async Task PauseAsync()
+    {
+        if (HasPlayed)
+        {
+            await JSRuntime.InvokeVoidAsync("pauseAudioPlayer", PlayerId);
+        }
+    }
+
     [JSInvokable]
     public async Task OnAudioEnded()
     {

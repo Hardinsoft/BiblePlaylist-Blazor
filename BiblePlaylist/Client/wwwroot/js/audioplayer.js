@@ -176,3 +176,11 @@ window.speakSequenceAsync = async (texts, rate = 0.92) => {
         }
     }
 };
+
+// Pause helper for clean navigation between segments (prevents TTS + audio overlap)
+window.pauseAudioPlayer = (playerId) => {
+    var audio = document.getElementById(playerId);
+    if (audio != null) {
+        audio.pause();
+    }
+};
