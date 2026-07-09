@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -10,5 +10,6 @@ namespace BiblePlaylist.Shared.Data
     {
         public bool Autoplay { get; set; }
         public bool Repeat { get; set; }
+        public bool EnableTts { get; set; } = true;
     }
 }

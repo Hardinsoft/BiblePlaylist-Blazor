@@ -176,6 +176,17 @@
         }
     }
 
+    private bool _enableTts = true;
+    public bool EnableTts
+    {
+        get => _enableTts;
+        set
+        {
+            _enableTts = value;
+            _ = EnableTtsChanged(value);
+        }
+    }
+
     // === SEGMENT PLAYBACK SUPPORT ===
     private List<(BookChapter Chapter, Segment Segment)> _playlistSegments = new();
     private int _currentSegmentIndex = -1;
@@ -197,12 +208,13 @@
 
         if (userSettings == null)
         {
-            userSettings = new BiblePlaylist.Shared.Data.UserSettings { Autoplay = _autoplay, Repeat = _repeat };
+            userSettings = new BiblePlaylist.Shared.Data.UserSettings { Autoplay = _autoplay, Repeat = _repeat, EnableTts = _enableTts };
             await localStorage.SetItemAsync("userName_settings", userSettings);
         }
 
         Autoplay = userSettings.Autoplay;
         Repeat = userSettings.Repeat;
+        _enableTts = userSettings.EnableTts;
 
         
     }
@@ -289,6 +301,33 @@
 
         var (chapter, segment) = CurrentSegment.Value;
 
+        // === TTS: Read playlist description (only for first segment) + BookChapter.VoiceText + Segment.VoiceText ===
+        if (_enableTts)
+        {
+            var textsToSpeak = new List<string>();
+            bool isFirstSegment = _currentSegmentIndex == 0;
+
+            if (isFirstSegment && !string.IsNullOrWhiteSpace(selectedPlaylist?.Description))
+            {
+                textsToSpeak.Add(selectedPlaylist.Description);
+            }
+
+            if (!string.IsNullOrWhiteSpace(chapter?.VoiceText))
+            {
+                textsToSpeak.Add(chapter.VoiceText);
+            }
+
+            if (!string.IsNullOrWhiteSpace(segment?.VoiceText))
+            {
+                textsToSpeak.Add(segment.VoiceText);
+            }
+
+            if (textsToSpeak.Any())
+            {
+                await js.InvokeVoidAsync("speakSequenceAsync", textsToSpeak);
+            }
+        }
+
         SelectedBookChapter = new SelectedBookChapter
         {
             SelectedBook = chapter.BookNumber,
@@ -374,6 +413,15 @@
     {
         userSettings.Repeat = newState;
         await localStorage.SetItemAsync("userName_settings", userSettings);
+    }
+
+    private async Task EnableTtsChanged(bool newState)
+    {
+        if (userSettings != null)
+        {
+            userSettings.EnableTts = newState;
+            await localStorage.SetItemAsync("userName_settings", userSettings);
+        }
     }
 
     protected async Task OnTrackEnded()
