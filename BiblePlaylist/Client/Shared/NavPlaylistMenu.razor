@@ -13,10 +13,10 @@
 
 <MudGrid Class="mt-1" id="menuGrid" hidden="@(!hide)">
     <MudItem md="4" xs="12">
-        <h3 @onclick="ToggleMenu">@selectedPlaylist?.Description</h3>
+        <h6 @onclick="ToggleMenu">@selectedPlaylist?.Description</h6>
     </MudItem>
     <MudItem md="4" xs="12">
-        <h3 @onclick="ToggleMenu">@chapterText</h3>
+        <h6 @onclick="ToggleMenu">@chapterText</h6>
     </MudItem>
 </MudGrid>
 
@@ -34,14 +34,14 @@
 
 <!-- Segment/Chapter navigation -->
 <MudGrid Class="mt-1 stickyChapterNav" hidden="@(!hide)">
-    <MudItem md="4" xs="3">
-        <MudFab StartIcon="@Icons.Material.Filled.ChevronLeft" 
+    <MudItem md="6" xs="3">
+        <MudFab Disabled="@loadingTrack" StartIcon="@Icons.Material.Filled.ChevronLeft" 
                 Color="@Color.Dark" 
                 @onclick="GoToPreviousSegment" 
                 Size="Size.Small" />
     </MudItem>
-    <MudItem md="4" xs="3">
-        <MudFab StartIcon="@Icons.Material.Filled.ChevronRight" 
+    <MudItem md="6" xs="3">
+        <MudFab Disabled="@loadingTrack" StartIcon="@Icons.Material.Filled.ChevronRight" 
                 Color="@Color.Dark" 
                 @onclick="GoToNextSegment" 
                 Size="Size.Small" />
@@ -135,9 +135,7 @@
 @code {
     private AudioPlayer audioPlayer;
 
-    private BiblePlaylist.Shared.DTO.SelectedBookChapter SelectedBookChapter { get; set; }    
-    private bool HasPlayed { get; set; } = false;
-
+    private BiblePlaylist.Shared.DTO.SelectedBookChapter SelectedBookChapter { get; set; }
     private BiblePlaylist.Shared.Navigation.BibleMenu bibleMenu { get; set; }
     private string chapterText { get; set; }
     private string chapterAudio { get; set; }
@@ -145,6 +143,7 @@
     private bool hide { get; set; } = true;
     private bool hideChapters { get; set; } = true;
     private bool hideVerses { get; set; } = true;
+    private bool loadingTrack { get; set; } = false;
 
     private Library Library { get; set; }
     private Playlist selectedPlaylist { get; set; }
@@ -153,6 +152,16 @@
     public string PlaylistName { get; set; }
 
     private BiblePlaylist.Shared.Data.UserSettings userSettings;
+
+    private bool _hasPlayed { get; set; } = false;
+    public bool HasPlayed
+    {
+        get => _hasPlayed;
+        set
+        {            
+            OnHasPlayedChanged(value);
+        }
+    }    
 
     private bool _autoplay = false;
     public bool Autoplay
@@ -176,6 +185,17 @@
         }
     }
 
+    private bool _enableTts = true;
+    public bool EnableTts
+    {
+        get => _enableTts;
+        set
+        {
+            _enableTts = value;
+            _ = EnableTtsChanged(value);
+        }
+    }
+
     // === SEGMENT PLAYBACK SUPPORT ===
     private List<(BookChapter Chapter, Segment Segment)> _playlistSegments = new();
     private int _currentSegmentIndex = -1;
@@ -190,37 +210,45 @@
 
     protected override async Task OnParametersSetAsync()
     {
-        await base.OnParametersSetAsync();
-
         if (userSettings == null)
             userSettings = await localStorage.GetItemAsync<BiblePlaylist.Shared.Data.UserSettings>("userName_settings");
 
         if (userSettings == null)
         {
-            userSettings = new BiblePlaylist.Shared.Data.UserSettings { Autoplay = _autoplay, Repeat = _repeat };
+            userSettings = new BiblePlaylist.Shared.Data.UserSettings { Autoplay = _autoplay, Repeat = _repeat, EnableTts = _enableTts };
             await localStorage.SetItemAsync("userName_settings", userSettings);
         }
 
         Autoplay = userSettings.Autoplay;
         Repeat = userSettings.Repeat;
+        _enableTts = userSettings.EnableTts;
 
-        
+        await base.OnParametersSetAsync();
+
+
     }
 
     protected override async Task OnInitializedAsync()
     {
+        await base.OnInitializedAsync();
+
         string libraryResponse = await Http.GetStringAsync("library?key=library_greg_hardin_live_com");
         Library = JsonConvert.DeserializeObject<Library>(libraryResponse);
         selectedPlaylist = Library.Playlists.FirstOrDefault(pl => pl.Name == PlaylistName);
 
         delegateLibrary.HasPlayedChanged += (o, e) => OnHasPlayedChanged(e.Value);
 
-        await base.OnInitializedAsync();
     }
 
     private void OnHasPlayedChanged(bool value)
     {
-        HasPlayed = value;
+        _hasPlayed = value;
+        StateHasChanged();
+    }
+
+    private void SetLoadingTrack(bool value)
+    {
+        loadingTrack = value;
         StateHasChanged();
     }
 
@@ -287,23 +315,59 @@
     {
         if (CurrentSegment == null || audioPlayer == null) return;
 
+        // Pause any currently playing audio
+        await audioPlayer.PauseAsync();
+        SetLoadingTrack(true);
+        OnHasPlayedChanged(false); // Ensure HasPlayed is false before TTS starts
+
         var (chapter, segment) = CurrentSegment.Value;
 
+        // === UX: Update the visible chapter/verse text IMMEDIATELY ===
+        // so the user sees the new reference while hearing the VoiceText narration.
         SelectedBookChapter = new SelectedBookChapter
         {
             SelectedBook = chapter.BookNumber,
             SelectedChapter = chapter.ChapterNumber
         };
 
-        chapterText = $"{chapter.Book?.Name ?? "Chapter"} {chapter.ChapterNumber}: {segment.VerseStart}-{segment.VerseEnd}";
-        chapterAudio = $"{endpoints.Audio}{chapter.Chapter?.AudioUrl}";
+        chapterText = $"{chapter.Book?.Name ?? "Chapter"} {chapter.ChapterNumber}:{segment.VerseStart}-{segment.VerseEnd}";
 
-        HasPlayed = true;
+        // Force the UI (header text) to update right now, before TTS starts
         await InvokeAsync(StateHasChanged);
 
-        // Force reload in case chapter changed
-        await audioPlayer.ReloadAsync();
+        // === TTS: Description (first segment) + BookChapter.VoiceText + Segment.VoiceText ===
+        if (_enableTts)
+        {            
+            var textsToSpeak = new List<string>();
+            bool isFirstSegment = _currentSegmentIndex == 0;
 
+            if (isFirstSegment && !string.IsNullOrWhiteSpace(selectedPlaylist?.Description))
+            {
+                textsToSpeak.Add(selectedPlaylist.Description);
+            }
+
+            if (!string.IsNullOrWhiteSpace(chapter?.VoiceText))
+            {
+                textsToSpeak.Add(chapter.VoiceText);
+            }
+
+            if (!string.IsNullOrWhiteSpace(segment?.VoiceText))
+            {
+                textsToSpeak.Add(segment.VoiceText);
+            }
+
+            if (textsToSpeak.Any())
+            {                
+                await js.InvokeVoidAsync("speakSequenceAsync", textsToSpeak);
+            }
+        }
+
+        // Only after narration completes do we switch the actual audio source
+        chapterAudio = $"{endpoints.Audio}{chapter.Chapter?.AudioUrl}";
+
+        OnHasPlayedChanged(true); // Mark HasPlayed as true after TTS completes        
+        SetLoadingTrack(false);
+        await audioPlayer.ReloadAsync();
         await js.InvokeVoidAsync("ScrollToTop");
     }
 
@@ -374,6 +438,15 @@
     {
         userSettings.Repeat = newState;
         await localStorage.SetItemAsync("userName_settings", userSettings);
+    }
+
+    private async Task EnableTtsChanged(bool newState)
+    {
+        if (userSettings != null)
+        {
+            userSettings.EnableTts = newState;
+            await localStorage.SetItemAsync("userName_settings", userSettings);
+        }
     }
 
     protected async Task OnTrackEnded()
