@@ -17,7 +17,7 @@
     {
         <div class="d-flex justify-center">
             <MudFab StartIcon="@Icons.Material.Filled.PlayCircle" 
-                    Size="Size.Large" 
+                    Size="Size.Medium" 
                     Color="Color.Primary" 
                     OnClick="HandleInitialPlay"
                     aria-label="Play audio" />
@@ -36,7 +36,7 @@
 
     @if (ShowSettingsToggles)
     {
-        <MudGrid Justify="Justify.SpaceAround" Class="mt-3">
+        <MudGrid Justify="Justify.SpaceAround" Class="mt-1">
             <MudItem xs="6" Class="d-flex justify-center">
                 <MudToggleIconButton 
                     Toggled="@Autoplay"
@@ -137,7 +137,7 @@
             _lastSegmentStart = SegmentStart;
             _lastSegmentEnd = SegmentEnd;
 
-            await LoadCurrentTrack();
+            //await LoadCurrentTrack();
         }
         await base.OnParametersSetAsync();
     }
