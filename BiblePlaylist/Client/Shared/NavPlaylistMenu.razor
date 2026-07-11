@@ -90,12 +90,11 @@
                                                         {
                                                             <MudList Dense="true" clickable="true">
                                                                 @foreach (var segment in chapter.Segments.OrderBy(s => s.VerseStart))
-                                                                {
-                                                                    @{
+                                                                {                                                                   
                                                                         var isCurrentSegment = CurrentSegment.HasValue &&
                                                                             CurrentSegment.Value.Chapter == chapter &&
                                                                             CurrentSegment.Value.Segment == segment;
-                                                                    }
+                                                                    
                                                                     <MudListItem @onclick="@(e => PlaySpecificSegment(chapter, segment))"
                                                                                  Class="@(isCurrentSegment ? "current-segment" : "")">
                                                                         <ChildContent>
@@ -133,8 +132,6 @@
             }
         </MudList>
     </MudItem>
-
-
 </MudGrid>
 <MudPaper Class="mb-5">
 
@@ -292,7 +289,7 @@
         _currentSegmentIndex = _playlistSegments.Any() ? 0 : -1;
 
         hideChapters = !hideChapters;
-        await InvokeAsync(StateHasChanged();
+        await InvokeAsync(StateHasChanged);
 
         // Auto-start first segment if autoplay is enabled
         if (Autoplay && _currentSegmentIndex >= 0)
@@ -320,10 +317,10 @@
             SelectedChapter = chapter.ChapterNumber
         };
 
-        chapterText = $"{chapter.Book?.Name ?? \"Chapter\"} {chapter.ChapterNumber}:{segment.VerseStart}-{segment.VerseEnd}";
+        chapterText = $"{chapter.Book?.Name} {chapter.ChapterNumber}:{segment.VerseStart}-{segment.VerseEnd}";
 
         // Force the UI (header text) to update right now, before TTS starts
-        await InvokeAsync(StateHasChanged());
+        await InvokeAsync(StateHasChanged);
 
         // === TTS: Description (first segment) + BookChapter.VoiceText + Segment.VoiceText ===
         if (_enableTts)
@@ -409,7 +406,7 @@
         }
 
         HasPlayed = true;
-        await InvokeAsync(StateHasChanged());
+        await InvokeAsync(StateHasChanged);
 
         await js.InvokeVoidAsync("ScrollToTop");
         delegateLibrary.NotifyChapterChanged(this, new BiblePlaylist.Client.Delegates.EventArgs<SelectedBookChapter>(SelectedBookChapter));
