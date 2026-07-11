@@ -66,7 +66,35 @@ Always generate a unique filename in Step 1. Do not reuse temp filenames.
 
 ## Recent Development Work: Last Four Merged PRs (as of 2026-07-10)
 
-As your Blazor WASM and MudBlazor specialist, here's a concise technical summary of the most recent merged pull requests. These PRs focus on maturing the core audio playlist engine, JS interop for media/TTS, MudBlazor UI refinements for mobile, and production deployment hygiene—all while maintaining clean componentization and Shared model contracts.
+A concise technical summary of the most recent merged pull requests. These PRs focus on maturing the core audio playlist engine, JS interop for media/TTS, MudBlazor UI refinements for mobile, and production deployment hygiene—all while maintaining clean componentization and Shared model contracts.
+
+### PR #10 – Play playlist - it works! (merged 2026-07-01)
+**Core Audio Playlist Feature Implementation:**
+- Extracted a reusable `AudioPlayer.razor` component with dedicated per-instance JS interop (via `audioplayer.js` callbacks) – eliminating duplication and enabling consistent audio behavior across pages.
+- Extended `AudioPlayer.razor` with optional `SegmentStart` / `SegmentEnd` parameters to support precise time-range/segment playback while preserving full-chapter mode for other components.
+- Implemented segment-based sequential playback logic in `NavPlaylistMenu.razor` (first working batch), including proper `SourceUrl` change detection and a new `ReloadAsync()` method.
+- Final fixes for autoplay, repeat, and version bump to **0.2.4**.
+
+This PR showcases strong Blazor component architecture: reusable audio player with clean interop, time-segment support on top of Shared `Segment` models, and robust state management for playlist flows.
+
+### PR #11 – Clean up playlist auto play mobile (merged 2026-07-08)
+**MudBlazor UI + Mobile Hardening:**
+- Refactored `AudioPlayer.razor` bindings: replaced fragile `@bind-Toggled` with explicit `Toggled` + `ToggledChanged` + handler methods on `MudToggleIconButton` for Autoplay and Repeat toggles. Resolves touch-device binding issues common in Blazor WASM on mobile browsers.
+- Adopted `MudExpansionPanels` for the playlist segment list, removing redundant wrappers/conditionals and improving spacing/text formatting for better mobile responsiveness.
+- Improved VS Code launch configuration (hard-coded launch URL + inspectUri) for more reliable Blazor WASM debugging sessions.
+- Stabilized segment auto-advance and repeat behavior critical for hands-free Bible listening.
+- Version bumped to **0.2.5**.
+
+Great example of leveraging MudBlazor's toggle and panel components while following Blazor best practices for two-way binding on mobile.
+
+### PR #12 – chore: Implements cache busting (merged 2026-07-09)
+**Production Readiness for Blazor WASM:**
+- Added MSBuild target in `BiblePlaylist.Client.csproj` that injects the project `<Version>` into `index.html` during `dotnet publish`.
+- Ensures all Blazor WASM assets (framework DLLs, app code, CSS/JS) receive cache-busting query strings or versioned paths, preventing stale resource serving from CDNs or static hosts after updates.
+- Included version bump commit to validate the mechanism.
+
+Essential for reliable deployments of MudBlazor + Blazor WASM apps.
+
 
 ### PR #13 – feat: Implement Text-to-Speech (TTS) for playlist description + BookChapter/Segment VoiceText (merged 2026-07-10)
 **Key Blazor/MudBlazor + JS Interop Highlights:**
@@ -79,32 +107,12 @@ As your Blazor WASM and MudBlazor specialist, here's a concise technical summary
 
 This PR exemplifies clean async JS interop patterns in Blazor WASM and thoughtful sequencing to keep the MudBlazor-driven UI responsive.
 
-### PR #12 – chore: Implements cache busting (merged 2026-07-09)
-**Production Readiness for Blazor WASM:**
-- Added MSBuild target in `BiblePlaylist.Client.csproj` that injects the project `<Version>` into `index.html` during `dotnet publish`.
-- Ensures all Blazor WASM assets (framework DLLs, app code, CSS/JS) receive cache-busting query strings or versioned paths, preventing stale resource serving from CDNs or static hosts after updates.
-- Included version bump commit to validate the mechanism.
 
-Essential for reliable deployments of MudBlazor + Blazor WASM apps.
 
-### PR #11 – Clean up playlist auto play mobile (merged 2026-07-08)
-**MudBlazor UI + Mobile Hardening:**
-- Refactored `AudioPlayer.razor` bindings: replaced fragile `@bind-Toggled` with explicit `Toggled` + `ToggledChanged` + handler methods on `MudToggleIconButton` for Autoplay and Repeat toggles. Resolves touch-device binding issues common in Blazor WASM on mobile browsers.
-- Adopted `MudExpansionPanels` for the playlist segment list, removing redundant wrappers/conditionals and improving spacing/text formatting for better mobile responsiveness.
-- Improved VS Code launch configuration (hard-coded launch URL + inspectUri) for more reliable Blazor WASM debugging sessions.
-- Stabilized segment auto-advance and repeat behavior critical for hands-free Bible listening.
-- Version bumped to **0.2.5**.
 
-Great example of leveraging MudBlazor's toggle and panel components while following Blazor best practices for two-way binding on mobile.
 
-### PR #10 – Play playlist - it works! (merged 2026-07-01)
-**Core Audio Playlist Feature Implementation:**
-- Extracted a reusable `AudioPlayer.razor` component with dedicated per-instance JS interop (via `audioplayer.js` callbacks) – eliminating duplication and enabling consistent audio behavior across pages.
-- Extended `AudioPlayer.razor` with optional `SegmentStart` / `SegmentEnd` parameters to support precise time-range/segment playback while preserving full-chapter mode for other components.
-- Implemented segment-based sequential playback logic in `NavPlaylistMenu.razor` (first working batch), including proper `SourceUrl` change detection and a new `ReloadAsync()` method.
-- Final fixes for autoplay, repeat, and version bump to **0.2.4**.
 
-This PR showcases strong Blazor component architecture: reusable audio player with clean interop, time-segment support on top of Shared `Segment` models, and robust state management for playlist flows.
+
 
 **Overall Impact:** These four PRs have significantly advanced the BiblePlaylist experience from basic chapter playback toward a polished, narrated, segment-aware playlist system optimized for mobile Bible study. Continued emphasis on MudBlazor for delightful UI controls, careful JS interop for media APIs, and deployment robustness positions the app well for production. All changes respect the Shared contract layer and Client/Server separation.
 
