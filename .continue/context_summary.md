@@ -95,7 +95,6 @@ Great example of leveraging MudBlazor's toggle and panel components while follow
 
 Essential for reliable deployments of MudBlazor + Blazor WASM apps.
 
-
 ### PR #13 – feat: Implement Text-to-Speech (TTS) for playlist description + BookChapter/Segment VoiceText (merged 2026-07-10)
 **Key Blazor/MudBlazor + JS Interop Highlights:**
 - Extended `wwwroot/js/audioplayer.js` with async `speakTextAsync` / `speakSequenceAsync` helpers (Promise-based, cancellable, error-handled) leveraging the browser's `speechSynthesis` Web Speech API.
@@ -106,12 +105,6 @@ Essential for reliable deployments of MudBlazor + Blazor WASM apps.
 - Hardened against race conditions during rapid navigation and autoplay scenarios; disabled play controls while loading.
 
 This PR exemplifies clean async JS interop patterns in Blazor WASM and thoughtful sequencing to keep the MudBlazor-driven UI responsive.
-
-
-
-
-
-
 
 
 **Overall Impact:** These four PRs have significantly advanced the BiblePlaylist experience from basic chapter playback toward a polished, narrated, segment-aware playlist system optimized for mobile Bible study. Continued emphasis on MudBlazor for delightful UI controls, careful JS interop for media APIs, and deployment robustness positions the app well for production. All changes respect the Shared contract layer and Client/Server separation.
