@@ -33,23 +33,25 @@
              ShowSettingsToggles="true" />
 
 <!-- Segment/Chapter navigation -->
-<MudGrid Class="mt-1 stickyChapterNav" hidden="@(!hide)">
-    <MudItem md="6" xs="3">
+<MudGrid Justify="Justify.SpaceBetween" Class="mt-1 stickyChapterNav" hidden="@(!hide)">
+    <MudItem>
         <MudFab Disabled="@loadingTrack" StartIcon="@Icons.Material.Filled.ChevronLeft" 
                 Color="@Color.Dark" 
                 @onclick="GoToPreviousSegment" 
-                Size="Size.Small" />
+                Size="Size.Small"
+                Title="Previous segment" />
     </MudItem>
-    <MudItem md="6" xs="3">
+    <MudItem Class="d-flex justify-end">
         <MudFab Disabled="@loadingTrack" StartIcon="@Icons.Material.Filled.ChevronRight" 
                 Color="@Color.Dark" 
                 @onclick="GoToNextSegment" 
-                Size="Size.Small" />
+                Size="Size.Small"
+                Title="Next segment" />
     </MudItem>
 </MudGrid>
 
 <!-- Playlist + Chapter/Verse expansion UI -->
-<MudGrid Class="mt-1" hidden="@(!hide)">
+<MudGrid Class="mt-1 px-1" hidden="@(!hide)">
     <MudItem xs="12">
         <MudList T="string">
             @if (Library != null)
@@ -89,19 +91,25 @@
                                                             <MudList Dense="true" clickable="true">
                                                                 @foreach (var segment in chapter.Segments.OrderBy(s => s.VerseStart))
                                                                 {
-                                                                    <MudListItem @onclick="@(e => PlaySpecificSegment(chapter, segment))">
+                                                                    @{
+                                                                        var isCurrentSegment = CurrentSegment.HasValue &&
+                                                                            CurrentSegment.Value.Chapter == chapter &&
+                                                                            CurrentSegment.Value.Segment == segment;
+                                                                    }
+                                                                    <MudListItem @onclick="@(e => PlaySpecificSegment(chapter, segment))"
+                                                                                 Class="@(isCurrentSegment ? "current-segment" : "")">
                                                                         <ChildContent>
-                                                                            <div class="verse-container mt-2 mb-4 pl-4 border-l-4 border-primary"
-                                                                                 style="border-color: var(--mud-palette-primary); background-color: rgba(0,0,0,0.02); border-radius: 4px; padding: 12px;">
+                                                                            <div class="verse-container mt-2 mb-4 pl-4 border-l-4 border-primary @(isCurrentSegment ? "mud-elevation-1" : "")"
+                                                                                 style="border-color: var(--mud-palette-primary); background-color: @(isCurrentSegment ? "rgba(var(--mud-palette-primary-rgb), 0.12)" : "rgba(0,0,0,0.02)"); border-radius: 4px; padding: 12px;">
                                                                                 @foreach (var verse in segment.Verses)
                                                                                 {
                                                                                     <div class="d-flex align-start mb-3">
-                                                                                        <MudText Typo="Typo.body2"
+                                                                                        <MudText Typo="Typo.body1"
                                                                                                  Class="verse-number mr-4 font-weight-medium"
                                                                                                  Color="Color.Secondary">
                                                                                             @verse.Number
                                                                                         </MudText>
-                                                                                        <div class="flex-grow-1 verse-text">
+                                                                                        <div class="flex-grow-1 verse-text" style="font-size: 1.05rem; line-height: 1.55;">
                                                                                             @((MarkupString)verse.Html)
                                                                                         </div>
                                                                                     </div>
@@ -284,7 +292,7 @@
         _currentSegmentIndex = _playlistSegments.Any() ? 0 : -1;
 
         hideChapters = !hideChapters;
-        await InvokeAsync(StateHasChanged);
+        await InvokeAsync(StateHasChanged();
 
         // Auto-start first segment if autoplay is enabled
         if (Autoplay && _currentSegmentIndex >= 0)
@@ -312,10 +320,10 @@
             SelectedChapter = chapter.ChapterNumber
         };
 
-        chapterText = $"{chapter.Book?.Name ?? "Chapter"} {chapter.ChapterNumber}:{segment.VerseStart}-{segment.VerseEnd}";
+        chapterText = $"{chapter.Book?.Name ?? \"Chapter\"} {chapter.ChapterNumber}:{segment.VerseStart}-{segment.VerseEnd}";
 
         // Force the UI (header text) to update right now, before TTS starts
-        await InvokeAsync(StateHasChanged);
+        await InvokeAsync(StateHasChanged());
 
         // === TTS: Description (first segment) + BookChapter.VoiceText + Segment.VoiceText ===
         if (_enableTts)
@@ -401,7 +409,7 @@
         }
 
         HasPlayed = true;
-        await InvokeAsync(StateHasChanged);
+        await InvokeAsync(StateHasChanged());
 
         await js.InvokeVoidAsync("ScrollToTop");
         delegateLibrary.NotifyChapterChanged(this, new BiblePlaylist.Client.Delegates.EventArgs<SelectedBookChapter>(SelectedBookChapter));
