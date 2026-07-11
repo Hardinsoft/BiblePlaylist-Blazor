@@ -234,8 +234,6 @@
 
         string libraryResponse = await Http.GetStringAsync("library?key=library_greg_hardin_live_com");
         Library = JsonConvert.DeserializeObject<Library>(libraryResponse);
-        selectedPlaylist = Library.Playlists.FirstOrDefault(pl => pl.Name == PlaylistName);
-
         delegateLibrary.HasPlayedChanged += (o, e) => OnHasPlayedChanged(e.Value);
 
     }
@@ -254,23 +252,7 @@
 
     protected async Task ToggleMenu()
     {
-        hide = !hide;
-
-        if (!hide)
-        {
-            var navSelectedBook = SelectedBookChapter?.SelectedBook ?? 0;
-            if (navSelectedBook > 2)
-            {
-                navSelectedBook -= 2;
-                var navBook = bibleMenu?.Books?.FirstOrDefault(b => b.Number == navSelectedBook);
-                if (navBook != null)
-                    await js.InvokeVoidAsync("NavToBook", $"#{navBook.Name.Replace(" ", "_")}");
-            }
-            else
-            {
-                await js.InvokeVoidAsync("ScrollToTop");
-            }
-        }
+        ///TODO: Possible future event to open edit menu
     }
 
     protected async Task SelectPlaylist(Playlist playlist)
