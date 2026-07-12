@@ -184,3 +184,21 @@ window.pauseAudioPlayer = (playerId) => {
         audio.pause();
     }
 };
+
+// Scroll to a specific verse element, accounting for the fixed MudAppBar header
+window.scrollToVerse = (id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+
+    const appBar = document.querySelector('.mud-appbar');
+    const headerHeight = appBar ? appBar.offsetHeight : 64;
+    const extraBuffer = 250; // extra pixels so the verse isn't right at the edge of the header
+
+    const elementPosition = el.getBoundingClientRect().top + window.pageYOffset;
+    const offsetPosition = elementPosition - headerHeight - extraBuffer;
+
+    window.scrollTo({
+        top: offsetPosition,
+        behavior: 'smooth'
+    });
+};
