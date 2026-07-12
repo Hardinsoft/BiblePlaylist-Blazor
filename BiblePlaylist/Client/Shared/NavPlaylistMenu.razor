@@ -11,45 +11,54 @@
 @inject IDelegateLibrary delegateLibrary
 @inject Endpoints endpoints
 
-<MudGrid Class="mt-1" id="menuGrid" hidden="@(!hide)">
-    <MudItem md="4" xs="12">
-        <h3 @onclick="ToggleMenu">@selectedPlaylist?.Description</h3>
-    </MudItem>
-    <MudItem md="4" xs="12">
-        <h3 @onclick="ToggleMenu">@chapterText</h3>
-    </MudItem>
-</MudGrid>
+<MudGrid Class="sticky-top mud-elevation-4" 
+         style="top: 64px; z-index: 2000; background-color: white; padding-bottom: 12px;">
+    <MudItem xs="12">
+        <MudGrid id="menuGrid" hidden="@(!hide)">
+            <MudItem md="4" xs="12">
+                <h6 @onclick="ToggleMenu">@selectedPlaylist?.Description</h6>
+            </MudItem>
+            <MudItem md="4" xs="12">
+                <h6 @onclick="ToggleMenu">@chapterText</h6>
+            </MudItem>
+        </MudGrid>
 
-<!-- === REUSABLE AUDIO PLAYER (now supports segments) === -->
-<AudioPlayer @ref="audioPlayer"
-             PlayerId="fullChapterAudioPlayer"
-             SourceUrl="@chapterAudio"
-             @bind-HasPlayed="HasPlayed"
-             @bind-Autoplay="Autoplay"
-             @bind-Repeat="Repeat"
-             SegmentStart="@CurrentSegmentStart"
-             SegmentEnd="@CurrentSegmentEnd"
-             OnEnded="OnTrackEnded"
-             ShowSettingsToggles="true" />
+        <!-- === REUSABLE AUDIO PLAYER (now supports segments) === -->
 
-<!-- Segment/Chapter navigation -->
-<MudGrid Class="mt-1 stickyChapterNav" hidden="@(!hide)">
-    <MudItem md="4" xs="3">
-        <MudFab StartIcon="@Icons.Material.Filled.ChevronLeft" 
-                Color="@Color.Dark" 
-                @onclick="GoToPreviousSegment" 
-                Size="Size.Small" />
-    </MudItem>
-    <MudItem md="4" xs="3">
-        <MudFab StartIcon="@Icons.Material.Filled.ChevronRight" 
-                Color="@Color.Dark" 
-                @onclick="GoToNextSegment" 
-                Size="Size.Small" />
+            <AudioPlayer @ref="audioPlayer"
+                         PlayerId="fullChapterAudioPlayer"
+                         SourceUrl="@chapterAudio"
+                         @bind-HasPlayed="HasPlayed"
+                         @bind-Autoplay="Autoplay"
+                         @bind-Repeat="Repeat"
+                         SegmentStart="@CurrentSegmentStart"
+                         SegmentEnd="@CurrentSegmentEnd"
+                         OnEnded="OnTrackEnded"
+                         ShowSettingsToggles="true" />
+
+            <!-- Segment/Chapter navigation -->
+            <MudGrid Justify="Justify.SpaceBetween" Class="mt-1 stickyChapterNav" hidden="@(!hide)">
+                <MudItem>
+                    <MudFab Disabled="@loadingTrack" StartIcon="@Icons.Material.Filled.ChevronLeft" 
+                            Color="@Color.Dark" 
+                            @onclick="GoToPreviousSegment" 
+                            Size="Size.Small"
+                            Title="Previous segment" />
+                </MudItem>
+                <MudItem Class="d-flex justify-end">
+                    <MudFab Disabled="@loadingTrack" StartIcon="@Icons.Material.Filled.ChevronRight" 
+                            Color="@Color.Dark" 
+                            @onclick="GoToNextSegment" 
+                            Size="Size.Small"
+                            Title="Next segment" />
+                </MudItem>
+            </MudGrid>
     </MudItem>
 </MudGrid>
 
 <!-- Playlist + Chapter/Verse expansion UI -->
-<MudGrid Class="mt-1" hidden="@(!hide)">
+<MudGrid Class="mt-4 px-1" hidden="@(!hide)">
+    <!-- extra buffer so verses don't sit right under the docked player -->
     <MudItem xs="12">
         <MudList T="string">
             @if (Library != null)
@@ -75,7 +84,7 @@
                                         <MudExpansionPanels multiExpand="true">
                                             @foreach (var chapter in selectedPlaylist.BookChapters)
                                             {
-                                                <MudExpansionPanel Text="@chapter.Display">
+                                                <MudExpansionPanel Text="@chapter.Display" Expanded="IsCurrentChapter(chapter)" >
                                                     <ChildContent>                                                        
 
                                                         @if (chapter.Segments == null || !chapter.Segments.Any())
@@ -89,19 +98,31 @@
                                                             <MudList Dense="true" clickable="true">
                                                                 @foreach (var segment in chapter.Segments.OrderBy(s => s.VerseStart))
                                                                 {
-                                                                    <MudListItem @onclick="@(e => PlaySpecificSegment(chapter, segment))">
+                                                                    <MudListItem @onclick="@(e => PlaySpecificSegment(chapter, segment))"
+                                                                                 Class="@(IsCurrentSegment(chapter, segment) ? "current-segment" : "")">
                                                                         <ChildContent>
-                                                                            <div class="verse-container mt-2 mb-4 pl-4 border-l-4 border-primary"
-                                                                                 style="border-color: var(--mud-palette-primary); background-color: rgba(0,0,0,0.02); border-radius: 4px; padding: 12px;">
+                                                                            <div class="verse-container mt-2 mb-4 pl-4 @(IsCurrentSegment(chapter, segment) ? "mud-elevation-1" : "")"
+                                                                                 style="border-radius: 4px; padding: 12px;">
                                                                                 @foreach (var verse in segment.Verses)
                                                                                 {
-                                                                                    <div class="d-flex align-start mb-3">
-                                                                                        <MudText Typo="Typo.body2"
+                                                                                    bool isPlayingVerse = IsCurrentSegment(chapter, segment) &&
+                                                                                        _currentPlaybackTime >= verse.AudioStart &&
+                                                                                        _currentPlaybackTime <= verse.AudioEnd;
+
+                                                                                    var verseId = $"verse-{chapter.ChapterNumber}-{segment.VerseStart}-{verse.Number}";
+                                                                                    if (isPlayingVerse)
+                                                                                    {
+                                                                                        _currentPlayingVerseId = verseId;
+                                                                                    }
+
+                                                                                    <div id="@verseId" class="d-flex align-start mb-3"
+                                                                                         style="@(isPlayingVerse ? "background-color: rgba(var(--mud-palette-primary-rgb), 0.12); border-radius: 4px; padding-left: 8px; margin-left: -4px;" : "")">
+                                                                                        <MudText Typo="Typo.body1"
                                                                                                  Class="verse-number mr-4 font-weight-medium"
-                                                                                                 Color="Color.Secondary">
+                                                                                                 >
                                                                                             @verse.Number
                                                                                         </MudText>
-                                                                                        <div class="flex-grow-1 verse-text">
+                                                                                        <div class="flex-grow-1 verse-text" style="font-size: 1.05rem; line-height: 1.55;">
                                                                                             @((MarkupString)verse.Html)
                                                                                         </div>
                                                                                     </div>
@@ -135,9 +156,7 @@
 @code {
     private AudioPlayer audioPlayer;
 
-    private BiblePlaylist.Shared.DTO.SelectedBookChapter SelectedBookChapter { get; set; }    
-    private bool HasPlayed { get; set; } = false;
-
+    private BiblePlaylist.Shared.DTO.SelectedBookChapter SelectedBookChapter { get; set; }
     private BiblePlaylist.Shared.Navigation.BibleMenu bibleMenu { get; set; }
     private string chapterText { get; set; }
     private string chapterAudio { get; set; }
@@ -145,6 +164,7 @@
     private bool hide { get; set; } = true;
     private bool hideChapters { get; set; } = true;
     private bool hideVerses { get; set; } = true;
+    private bool loadingTrack { get; set; } = false;
 
     private Library Library { get; set; }
     private Playlist selectedPlaylist { get; set; }
@@ -153,6 +173,16 @@
     public string PlaylistName { get; set; }
 
     private BiblePlaylist.Shared.Data.UserSettings userSettings;
+
+    private bool _hasPlayed { get; set; } = false;
+    public bool HasPlayed
+    {
+        get => _hasPlayed;
+        set
+        {            
+            OnHasPlayedChanged(value);
+        }
+    }    
 
     private bool _autoplay = false;
     public bool Autoplay
@@ -176,9 +206,24 @@
         }
     }
 
+    private bool _enableTts = true;
+    public bool EnableTts
+    {
+        get => _enableTts;
+        set
+        {
+            _enableTts = value;
+            _ = EnableTtsChanged(value);
+        }
+    }
+
     // === SEGMENT PLAYBACK SUPPORT ===
     private List<(BookChapter Chapter, Segment Segment)> _playlistSegments = new();
     private int _currentSegmentIndex = -1;
+    private decimal _currentPlaybackTime;
+    private System.Timers.Timer? _playbackTimer;
+    private string _currentPlayingVerseId;
+    private string _lastScrolledVerseId;
 
     private (BookChapter Chapter, Segment Segment)? CurrentSegment =>
         (_currentSegmentIndex >= 0 && _currentSegmentIndex < _playlistSegments.Count)
@@ -188,61 +233,112 @@
     private decimal? CurrentSegmentStart => CurrentSegment?.Segment.Verses?.FirstOrDefault()?.AudioStart;
     private decimal? CurrentSegmentEnd => CurrentSegment?.Segment.Verses?.LastOrDefault()?.AudioEnd;
 
+    private bool IsCurrentSegment(BookChapter chapter, Segment segment)
+    {
+        return CurrentSegment.HasValue &&
+               CurrentSegment.Value.Chapter == chapter &&
+               CurrentSegment.Value.Segment == segment;
+    }
+
+    private bool IsCurrentChapter(BookChapter chapter)
+    {
+        return CurrentSegment.HasValue && CurrentSegment.Value.Chapter == chapter;
+    }
+
+    private void StartPlaybackTimer()
+    {
+        StopPlaybackTimer();
+        _playbackTimer = new System.Timers.Timer(300);
+        _playbackTimer.Elapsed += async (_, _) => await UpdatePlaybackPosition();
+        _playbackTimer.AutoReset = true;
+        _playbackTimer.Start();
+    }
+
+    private void StopPlaybackTimer()
+    {
+        if (_playbackTimer != null)
+        {
+            _playbackTimer.Stop();
+            _playbackTimer.Dispose();
+            _playbackTimer = null;
+        }
+    }
+
+    private async Task UpdatePlaybackPosition()
+    {
+        if (CurrentSegment == null || !HasPlayed)
+        {
+            StopPlaybackTimer();
+            return;
+        }
+
+        try
+        {
+            decimal time = await js.InvokeAsync<decimal>("GetAudioCurrentTime");
+            if (Math.Abs(time - _currentPlaybackTime) > 0.05m)
+            {
+                _currentPlaybackTime = time;
+                await InvokeAsync(StateHasChanged);
+
+                // Scroll to the currently playing verse if it has changed
+                if (!string.IsNullOrEmpty(_currentPlayingVerseId) && _currentPlayingVerseId != _lastScrolledVerseId)
+                {
+                    _lastScrolledVerseId = _currentPlayingVerseId;
+                    _ = js.InvokeVoidAsync("scrollToVerse", _currentPlayingVerseId);
+                }
+            }
+        }
+        catch
+        {
+            // ignore transient JS interop errors
+        }
+    }
+
     protected override async Task OnParametersSetAsync()
     {
-        await base.OnParametersSetAsync();
-
         if (userSettings == null)
             userSettings = await localStorage.GetItemAsync<BiblePlaylist.Shared.Data.UserSettings>("userName_settings");
 
         if (userSettings == null)
         {
-            userSettings = new BiblePlaylist.Shared.Data.UserSettings { Autoplay = _autoplay, Repeat = _repeat };
+            userSettings = new BiblePlaylist.Shared.Data.UserSettings { Autoplay = _autoplay, Repeat = _repeat, EnableTts = _enableTts };
             await localStorage.SetItemAsync("userName_settings", userSettings);
         }
 
         Autoplay = userSettings.Autoplay;
         Repeat = userSettings.Repeat;
+        _enableTts = userSettings.EnableTts;
 
-        
+        await base.OnParametersSetAsync();
+
+
     }
 
     protected override async Task OnInitializedAsync()
     {
+        await base.OnInitializedAsync();
+
         string libraryResponse = await Http.GetStringAsync("library?key=library_greg_hardin_live_com");
         Library = JsonConvert.DeserializeObject<Library>(libraryResponse);
-        selectedPlaylist = Library.Playlists.FirstOrDefault(pl => pl.Name == PlaylistName);
-
         delegateLibrary.HasPlayedChanged += (o, e) => OnHasPlayedChanged(e.Value);
 
-        await base.OnInitializedAsync();
     }
 
     private void OnHasPlayedChanged(bool value)
     {
-        HasPlayed = value;
+        _hasPlayed = value;
+        StateHasChanged();
+    }
+
+    private void SetLoadingTrack(bool value)
+    {
+        loadingTrack = value;
         StateHasChanged();
     }
 
     protected async Task ToggleMenu()
     {
-        hide = !hide;
-
-        if (!hide)
-        {
-            var navSelectedBook = SelectedBookChapter?.SelectedBook ?? 0;
-            if (navSelectedBook > 2)
-            {
-                navSelectedBook -= 2;
-                var navBook = bibleMenu?.Books?.FirstOrDefault(b => b.Number == navSelectedBook);
-                if (navBook != null)
-                    await js.InvokeVoidAsync("NavToBook", $"#{navBook.Name.Replace(" ", "_")}");
-            }
-            else
-            {
-                await js.InvokeVoidAsync("ScrollToTop");
-            }
-        }
+        ///TODO: Possible future event to open edit menu
     }
 
     protected async Task SelectPlaylist(Playlist playlist)
@@ -287,22 +383,62 @@
     {
         if (CurrentSegment == null || audioPlayer == null) return;
 
+        // Pause any currently playing audio
+        await audioPlayer.PauseAsync();
+        SetLoadingTrack(true);
+        OnHasPlayedChanged(false); // Ensure HasPlayed is false before TTS starts
+
         var (chapter, segment) = CurrentSegment.Value;
 
+        // === UX: Update the visible chapter/verse text IMMEDIATELY ===
+        // so the user sees the new reference while hearing the VoiceText narration.
         SelectedBookChapter = new SelectedBookChapter
         {
             SelectedBook = chapter.BookNumber,
             SelectedChapter = chapter.ChapterNumber
         };
 
-        chapterText = $"{chapter.Book?.Name ?? "Chapter"} {chapter.ChapterNumber}: {segment.VerseStart}-{segment.VerseEnd}";
-        chapterAudio = $"{endpoints.Audio}{chapter.Chapter?.AudioUrl}";
+        chapterText = $"{chapter.Book?.Name} {chapter.ChapterNumber}:{segment.VerseStart}-{segment.VerseEnd}";
 
-        HasPlayed = true;
+        // Force the UI (header text) to update right now, before TTS starts
         await InvokeAsync(StateHasChanged);
 
-        // Force reload in case chapter changed
+        // === TTS: Description (first segment) + BookChapter.VoiceText + Segment.VoiceText ===
+        if (_enableTts)
+        {            
+            var textsToSpeak = new List<string>();
+            bool isFirstSegment = _currentSegmentIndex == 0;
+
+            if (isFirstSegment && !string.IsNullOrWhiteSpace(selectedPlaylist?.Description))
+            {
+                textsToSpeak.Add(selectedPlaylist.Description);
+            }
+
+            if (!string.IsNullOrWhiteSpace(chapter?.VoiceText))
+            {
+                textsToSpeak.Add(chapter.VoiceText);
+            }
+
+            if (!string.IsNullOrWhiteSpace(segment?.VoiceText))
+            {
+                textsToSpeak.Add(segment.VoiceText);
+            }
+
+            if (textsToSpeak.Any())
+            {                
+                await js.InvokeVoidAsync("speakSequenceAsync", textsToSpeak);
+            }
+        }
+
+        // Only after narration completes do we switch the actual audio source
+        chapterAudio = $"{endpoints.Audio}{chapter.Chapter?.AudioUrl}";
+
+        OnHasPlayedChanged(true); // Mark HasPlayed as true after TTS completes        
+        SetLoadingTrack(false);
         await audioPlayer.ReloadAsync();
+
+        _currentPlaybackTime = CurrentSegmentStart ?? 0m;
+        StartPlaybackTimer();
 
         await js.InvokeVoidAsync("ScrollToTop");
     }
@@ -376,8 +512,19 @@
         await localStorage.SetItemAsync("userName_settings", userSettings);
     }
 
+    private async Task EnableTtsChanged(bool newState)
+    {
+        if (userSettings != null)
+        {
+            userSettings.EnableTts = newState;
+            await localStorage.SetItemAsync("userName_settings", userSettings);
+        }
+    }
+
     protected async Task OnTrackEnded()
     {
+        StopPlaybackTimer();
+
         if (Repeat && ((_currentSegmentIndex + 1) == _playlistSegments.Count))
         {
             _currentSegmentIndex = 0;
@@ -394,5 +541,10 @@
             // Fallback to old chapter behavior if not in segment mode
             await ChapterForward();
         }
+    }
+
+    public void Dispose()
+    {
+        StopPlaybackTimer();
     }
 }

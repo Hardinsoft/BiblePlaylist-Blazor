@@ -12,12 +12,12 @@
 @inject IJSRuntime JSRuntime
 @implements IAsyncDisposable
 
-<div class="audio-player-container mud-elevation-2 pa-2 rounded">
+<div class="audio-player-container pa-1">
     @if (!HasPlayed)
     {
         <div class="d-flex justify-center">
             <MudFab StartIcon="@Icons.Material.Filled.PlayCircle" 
-                    Size="Size.Large" 
+                    Size="Size.Medium" 
                     Color="Color.Primary" 
                     OnClick="HandleInitialPlay"
                     aria-label="Play audio" />
@@ -36,30 +36,31 @@
 
     @if (ShowSettingsToggles)
     {
-        <MudGrid Justify="Justify.SpaceAround" Class="mt-3">
-            <MudItem xs="6" Class="d-flex justify-center">
-                <MudToggleIconButton 
-                    Toggled="@Autoplay"
-                    ToggledChanged="SetAutoplay"
-                    Icon="@Icons.Material.Filled.Autorenew"
-                    ToggledIcon="@Icons.Material.Filled.Autorenew"
-                    Color="Color.Default"
-                    ToggledColor="Color.Primary"
-                    Title="Autoplay next" />
-                <MudText Typo="Typo.caption" Class="ml-1 align-self-center">Autoplay</MudText>
-            </MudItem>
-            <MudItem xs="6" Class="d-flex justify-center">
-                <MudToggleIconButton
-                    Toggled="@Repeat"
-                    ToggledChanged="SetRepeat"
-                    Icon="@Icons.Material.Filled.Repeat"
-                    ToggledIcon="@Icons.Material.Filled.RepeatOn"
-                    Color="Color.Default"
-                    ToggledColor="Color.Primary"
-                    Title="Repeat current" />
-                <MudText Typo="Typo.caption" Class="ml-1 align-self-center">Repeat</MudText>
-            </MudItem>
-        </MudGrid>
+        <MudStack Row Justify="Justify.Center" Spacing="3" Class="mt-1">
+            <div class="d-flex align-center">
+                <MudToggleIconButton Toggled="@Autoplay"
+                                     ToggledChanged="SetAutoplay"
+                                     Icon="@Icons.Material.Filled.Autorenew"
+                                     ToggledIcon="@Icons.Material.Filled.Autorenew"
+                                     Color="Color.Default"
+                                     ToggledColor="Color.Primary"
+                                     Size="Size.Small"
+                                     Title="Autoplay next segment" />
+                <MudText Typo="Typo.caption" Class="ml-1">Autoplay</MudText>
+            </div>
+
+            <div class="d-flex align-center">
+                <MudToggleIconButton Toggled="@Repeat"
+                                     ToggledChanged="SetRepeat"
+                                     Icon="@Icons.Material.Filled.Repeat"
+                                     ToggledIcon="@Icons.Material.Filled.RepeatOn"
+                                     Color="Color.Default"
+                                     ToggledColor="Color.Primary"
+                                     Size="Size.Small"
+                                     Title="Repeat current segment" />
+                <MudText Typo="Typo.caption" Class="ml-1">Repeat</MudText>
+            </div>
+        </MudStack>
     }
 </div>
 
@@ -194,6 +195,18 @@
     public async Task ReloadAsync()
     {
         await LoadCurrentTrack();
+    }
+
+    /// <summary>
+    /// Pauses the underlying audio element. Used by playlist navigation to ensure
+    /// clean handoff between segments when TTS narration is about to start.
+    /// </summary>
+    public async Task PauseAsync()
+    {
+        if (HasPlayed)
+        {
+            await JSRuntime.InvokeVoidAsync("pauseAudioPlayer", PlayerId);
+        }
     }
 
     [JSInvokable]

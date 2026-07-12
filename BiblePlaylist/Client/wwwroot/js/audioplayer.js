@@ -138,3 +138,67 @@ function isCached() {
         .then(cache => cache.match(FILE_NAME))
         .then(Boolean);
 }
+
+// === Text-to-Speech (TTS) Support for Playlist descriptions and VoiceText ===
+// Uses Web Speech API (SpeechSynthesis). Speaks sequentially and waits for completion.
+window.speakTextAsync = (text, rate = 0.92, pitch = 1.05) => {
+    return new Promise((resolve) => {
+        if (!('speechSynthesis' in window) || !text || typeof text !== 'string' || !text.trim()) {
+            resolve();
+            return;
+        }
+        try {
+            window.speechSynthesis.cancel();
+            const utterance = new SpeechSynthesisUtterance(text.trim());
+            utterance.rate = Math.max(0.5, Math.min(2.0, rate));
+            utterance.pitch = Math.max(0.5, Math.min(2.0, pitch));
+            utterance.volume = 0.85;
+            utterance.onend = () => resolve();
+            utterance.onerror = (event) => {
+                console.warn('TTS playback error:', event);
+                resolve();
+            };
+            window.speechSynthesis.speak(utterance);
+        } catch (ex) {
+            console.warn('TTS exception, continuing playback:', ex);
+            resolve();
+        }
+    });
+};
+
+window.speakSequenceAsync = async (texts, rate = 0.92) => {
+    if (!texts || !Array.isArray(texts)) {
+        return;
+    }
+    for (const t of texts) {
+        if (typeof t === 'string' && t.trim()) {
+            await window.speakTextAsync(t, rate);
+        }
+    }
+};
+
+// Pause helper for clean navigation between segments (prevents TTS + audio overlap)
+window.pauseAudioPlayer = (playerId) => {
+    var audio = document.getElementById(playerId);
+    if (audio != null) {
+        audio.pause();
+    }
+};
+
+// Scroll to a specific verse element, accounting for the fixed MudAppBar header
+window.scrollToVerse = (id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+
+    const appBar = document.querySelector('.mud-appbar');
+    const headerHeight = appBar ? appBar.offsetHeight : 64;
+    const extraBuffer = 250; // extra pixels so the verse isn't right at the edge of the header
+
+    const elementPosition = el.getBoundingClientRect().top + window.pageYOffset;
+    const offsetPosition = elementPosition - headerHeight - extraBuffer;
+
+    window.scrollTo({
+        top: offsetPosition,
+        behavior: 'smooth'
+    });
+};
