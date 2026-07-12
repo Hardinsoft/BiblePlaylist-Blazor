@@ -76,8 +76,8 @@
 
                                         <MudExpansionPanels multiExpand="true">
                                             @foreach (var chapter in selectedPlaylist.BookChapters)
-                                            {                                               
-                                                <MudExpansionPanel Text="@chapter.Display" Expanded="IsCurrentChapter(chapter)">
+                                            {
+                                                <MudExpansionPanel Text="@chapter.Display" IsExpanded="@IsCurrentChapter(chapter)">
                                                     <ChildContent>                                                        
 
                                                         @if (chapter.Segments == null || !chapter.Segments.Any())
@@ -90,18 +90,23 @@
                                                         {
                                                             <MudList Dense="true" clickable="true">
                                                                 @foreach (var segment in chapter.Segments.OrderBy(s => s.VerseStart))
-                                                                {                                                                   
+                                                                {
                                                                     <MudListItem @onclick="@(e => PlaySpecificSegment(chapter, segment))"
                                                                                  Class="@(IsCurrentSegment(chapter, segment) ? "current-segment" : "")">
                                                                         <ChildContent>
-                                                                            <div class="verse-container mt-2 mb-4 pl-4 @(IsCurrentSegment(chapter, segment) ? "mud-elevation-1" : "")"
-                                                                                 style="border-radius: 4px; padding: 12px;">
+                                                                            <div class="verse-container mt-2 mb-4 pl-4 border-l-4 border-primary @(IsCurrentSegment(chapter, segment) ? "mud-elevation-1" : "")"
+                                                                                 style="border-color: var(--mud-palette-primary); background-color: @(IsCurrentSegment(chapter, segment) ? "rgba(var(--mud-palette-primary-rgb), 0.12)" : "rgba(0,0,0,0.02)"); border-radius: 4px; padding: 12px;">
                                                                                 @foreach (var verse in segment.Verses)
                                                                                 {
-                                                                                    <div class="d-flex align-start mb-3">
+                                                                                    bool isPlayingVerse = IsCurrentSegment(chapter, segment) &&
+                                                                                        _currentPlaybackTime >= (double)(verse.AudioStart ?? 0) &&
+                                                                                        _currentPlaybackTime <= (double)(verse.AudioEnd ?? double.MaxValue);
+
+                                                                                    <div class="d-flex align-start mb-3"
+                                                                                         style="@(isPlayingVerse ? "background-color: rgba(var(--mud-palette-primary-rgb), 0.12); border-radius: 4px; padding-left: 8px; margin-left: -4px;" : "")">
                                                                                         <MudText Typo="Typo.body1"
                                                                                                  Class="verse-number mr-4 font-weight-medium"
-                                                                                                 >
+                                                                                                 Color="Color.Secondary">
                                                                                             @verse.Number
                                                                                         </MudText>
                                                                                         <div class="flex-grow-1 verse-text" style="font-size: 1.05rem; line-height: 1.55;">
@@ -128,6 +133,8 @@
             }
         </MudList>
     </MudItem>
+
+
 </MudGrid>
 <MudPaper Class="mb-5">
 
@@ -200,6 +207,8 @@
     // === SEGMENT PLAYBACK SUPPORT ===
     private List<(BookChapter Chapter, Segment Segment)> _playlistSegments = new();
     private int _currentSegmentIndex = -1;
+    private double _currentPlaybackTime;
+    private System.Timers.Timer? _playbackTimer;
 
     private (BookChapter Chapter, Segment Segment)? CurrentSegment =>
         (_currentSegmentIndex >= 0 && _currentSegmentIndex < _playlistSegments.Count)
@@ -219,6 +228,48 @@
     private bool IsCurrentChapter(BookChapter chapter)
     {
         return CurrentSegment.HasValue && CurrentSegment.Value.Chapter == chapter;
+    }
+
+    private void StartPlaybackTimer()
+    {
+        StopPlaybackTimer();
+        _playbackTimer = new System.Timers.Timer(300);
+        _playbackTimer.Elapsed += async (_, _) => await UpdatePlaybackPosition();
+        _playbackTimer.AutoReset = true;
+        _playbackTimer.Start();
+    }
+
+    private void StopPlaybackTimer()
+    {
+        if (_playbackTimer != null)
+        {
+            _playbackTimer.Stop();
+            _playbackTimer.Dispose();
+            _playbackTimer = null;
+        }
+    }
+
+    private async Task UpdatePlaybackPosition()
+    {
+        if (CurrentSegment == null || !HasPlayed)
+        {
+            StopPlaybackTimer();
+            return;
+        }
+
+        try
+        {
+            double time = await js.InvokeAsync<double>("GetAudioCurrentTime");
+            if (Math.Abs(time - _currentPlaybackTime) > 0.05)
+            {
+                _currentPlaybackTime = time;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch
+        {
+            // ignore transient JS interop errors
+        }
     }
 
     protected override async Task OnParametersSetAsync()
@@ -325,7 +376,7 @@
             SelectedChapter = chapter.ChapterNumber
         };
 
-        chapterText = $"{chapter.Book?.Name} {chapter.ChapterNumber}:{segment.VerseStart}-{segment.VerseEnd}";
+        chapterText = $"{chapter.Book?.Name ?? \"Chapter\"} {chapter.ChapterNumber}:{segment.VerseStart}-{segment.VerseEnd}";
 
         // Force the UI (header text) to update right now, before TTS starts
         await InvokeAsync(StateHasChanged);
@@ -363,6 +414,10 @@
         OnHasPlayedChanged(true); // Mark HasPlayed as true after TTS completes        
         SetLoadingTrack(false);
         await audioPlayer.ReloadAsync();
+
+        _currentPlaybackTime = (double)(CurrentSegmentStart ?? 0);
+        StartPlaybackTimer();
+
         await js.InvokeVoidAsync("ScrollToTop");
     }
 
@@ -446,6 +501,8 @@
 
     protected async Task OnTrackEnded()
     {
+        StopPlaybackTimer();
+
         if (Repeat && ((_currentSegmentIndex + 1) == _playlistSegments.Count))
         {
             _currentSegmentIndex = 0;
@@ -462,5 +519,10 @@
             // Fallback to old chapter behavior if not in segment mode
             await ChapterForward();
         }
+    }
+
+    public void Dispose()
+    {
+        StopPlaybackTimer();
     }
 }
