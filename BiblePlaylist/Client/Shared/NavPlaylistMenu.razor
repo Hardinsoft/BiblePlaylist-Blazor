@@ -76,8 +76,8 @@
 
                                         <MudExpansionPanels multiExpand="true">
                                             @foreach (var chapter in selectedPlaylist.BookChapters)
-                                            {
-                                                <MudExpansionPanel Text="@chapter.Display" IsExpanded="@IsCurrentChapter(chapter)">
+                                            {                                               
+                                                <MudExpansionPanel Text="@chapter.Display" Expanded="IsCurrentChapter(chapter)">
                                                     <ChildContent>                                                        
 
                                                         @if (chapter.Segments == null || !chapter.Segments.Any())
@@ -90,18 +90,18 @@
                                                         {
                                                             <MudList Dense="true" clickable="true">
                                                                 @foreach (var segment in chapter.Segments.OrderBy(s => s.VerseStart))
-                                                                {
+                                                                {                                                                   
                                                                     <MudListItem @onclick="@(e => PlaySpecificSegment(chapter, segment))"
                                                                                  Class="@(IsCurrentSegment(chapter, segment) ? "current-segment" : "")">
                                                                         <ChildContent>
-                                                                            <div class="verse-container mt-2 mb-4 pl-4 border-l-4 border-primary @(IsCurrentSegment(chapter, segment) ? "mud-elevation-1" : "")"
-                                                                                 style="border-color: var(--mud-palette-primary); background-color: @(IsCurrentSegment(chapter, segment) ? "rgba(var(--mud-palette-primary-rgb), 0.12)" : "rgba(0,0,0,0.02)"); border-radius: 4px; padding: 12px;">
+                                                                            <div class="verse-container mt-2 mb-4 pl-4 @(IsCurrentSegment(chapter, segment) ? "mud-elevation-1" : "")"
+                                                                                 style="border-radius: 4px; padding: 12px;">
                                                                                 @foreach (var verse in segment.Verses)
                                                                                 {
                                                                                     <div class="d-flex align-start mb-3">
                                                                                         <MudText Typo="Typo.body1"
                                                                                                  Class="verse-number mr-4 font-weight-medium"
-                                                                                                 Color="Color.Secondary">
+                                                                                                 >
                                                                                             @verse.Number
                                                                                         </MudText>
                                                                                         <div class="flex-grow-1 verse-text" style="font-size: 1.05rem; line-height: 1.55;">
