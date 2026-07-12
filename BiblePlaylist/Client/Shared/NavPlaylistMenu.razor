@@ -102,7 +102,13 @@
                                                                                         _currentPlaybackTime >= verse.AudioStart &&
                                                                                         _currentPlaybackTime <= verse.AudioEnd;
 
-                                                                                    <div class="d-flex align-start mb-3"
+                                                                                    var verseId = $"verse-{chapter.ChapterNumber}-{segment.VerseStart}-{verse.Number}";
+                                                                                    if (isPlayingVerse)
+                                                                                    {
+                                                                                        _currentPlayingVerseId = verseId;
+                                                                                    }
+
+                                                                                    <div id="@verseId" class="d-flex align-start mb-3"
                                                                                          style="@(isPlayingVerse ? "background-color: rgba(var(--mud-palette-primary-rgb), 0.12); border-radius: 4px; padding-left: 8px; margin-left: -4px;" : "")">
                                                                                         <MudText Typo="Typo.body1"
                                                                                                  Class="verse-number mr-4 font-weight-medium"
@@ -209,6 +215,8 @@
     private int _currentSegmentIndex = -1;
     private decimal _currentPlaybackTime;
     private System.Timers.Timer? _playbackTimer;
+    private string _currentPlayingVerseId;
+    private string _lastScrolledVerseId;
 
     private (BookChapter Chapter, Segment Segment)? CurrentSegment =>
         (_currentSegmentIndex >= 0 && _currentSegmentIndex < _playlistSegments.Count)
@@ -264,6 +272,14 @@
             {
                 _currentPlaybackTime = time;
                 await InvokeAsync(StateHasChanged);
+
+                // Scroll to the currently playing verse if it has changed
+                if (!string.IsNullOrEmpty(_currentPlayingVerseId) && _currentPlayingVerseId != _lastScrolledVerseId)
+                {
+                    _lastScrolledVerseId = _currentPlayingVerseId;
+                    _ = js.InvokeVoidAsync("eval",
+                        $"document.getElementById('{_currentPlayingVerseId}').scrollIntoView({{ behavior: 'smooth', block: 'start' }});");
+                }
             }
         }
         catch
