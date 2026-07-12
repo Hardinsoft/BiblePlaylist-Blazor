@@ -77,7 +77,7 @@
                                         <MudExpansionPanels multiExpand="true">
                                             @foreach (var chapter in selectedPlaylist.BookChapters)
                                             {
-                                                <MudExpansionPanel Text="@chapter.Display">
+                                                <MudExpansionPanel Text="@chapter.Display" IsExpanded="@IsCurrentChapter(chapter)">
                                                     <ChildContent>                                                        
 
                                                         @if (chapter.Segments == null || !chapter.Segments.Any())
@@ -90,16 +90,12 @@
                                                         {
                                                             <MudList Dense="true" clickable="true">
                                                                 @foreach (var segment in chapter.Segments.OrderBy(s => s.VerseStart))
-                                                                {                                                                   
-                                                                        var isCurrentSegment = CurrentSegment.HasValue &&
-                                                                            CurrentSegment.Value.Chapter == chapter &&
-                                                                            CurrentSegment.Value.Segment == segment;
-                                                                    
+                                                                {
                                                                     <MudListItem @onclick="@(e => PlaySpecificSegment(chapter, segment))"
-                                                                                 Class="@(isCurrentSegment ? "current-segment" : "")">
+                                                                                 Class="@(IsCurrentSegment(chapter, segment) ? "current-segment" : "")">
                                                                         <ChildContent>
-                                                                            <div class="verse-container mt-2 mb-4 pl-4 border-l-4 border-primary @(isCurrentSegment ? "mud-elevation-1" : "")"
-                                                                                 style="border-color: var(--mud-palette-primary); background-color: @(isCurrentSegment ? "rgba(var(--mud-palette-primary-rgb), 0.12)" : "rgba(0,0,0,0.02)"); border-radius: 4px; padding: 12px;">
+                                                                            <div class="verse-container mt-2 mb-4 pl-4 border-l-4 border-primary @(IsCurrentSegment(chapter, segment) ? "mud-elevation-1" : "")"
+                                                                                 style="border-color: var(--mud-palette-primary); background-color: @(IsCurrentSegment(chapter, segment) ? "rgba(var(--mud-palette-primary-rgb), 0.12)" : "rgba(0,0,0,0.02)"); border-radius: 4px; padding: 12px;">
                                                                                 @foreach (var verse in segment.Verses)
                                                                                 {
                                                                                     <div class="d-flex align-start mb-3">
@@ -212,6 +208,18 @@
 
     private decimal? CurrentSegmentStart => CurrentSegment?.Segment.Verses?.FirstOrDefault()?.AudioStart;
     private decimal? CurrentSegmentEnd => CurrentSegment?.Segment.Verses?.LastOrDefault()?.AudioEnd;
+
+    private bool IsCurrentSegment(BookChapter chapter, Segment segment)
+    {
+        return CurrentSegment.HasValue &&
+               CurrentSegment.Value.Chapter == chapter &&
+               CurrentSegment.Value.Segment == segment;
+    }
+
+    private bool IsCurrentChapter(BookChapter chapter)
+    {
+        return CurrentSegment.HasValue && CurrentSegment.Value.Chapter == chapter;
+    }
 
     protected override async Task OnParametersSetAsync()
     {
