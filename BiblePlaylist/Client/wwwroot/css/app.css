@@ -99,3 +99,15 @@ a, .btn-link {
     top: 100px;
     z-index: 1000;
 }
+
+.stick-to-menu-bottom {
+    top: 64px;
+    background-color: white;
+    padding-bottom: 12px;
+}
+
+@media screen and (max-width: 767px) {
+    .stick-to-menu-bottom {
+        top: 57px; /* Phone top value */
+    }
+}
