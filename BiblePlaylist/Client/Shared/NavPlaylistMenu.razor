@@ -11,48 +11,50 @@
 @inject IDelegateLibrary delegateLibrary
 @inject Endpoints endpoints
 
-<div class="sticky-top"
-     style="top: 64px; z-index: 2000; background-color: white; padding-bottom: 12px;">
-<MudGrid Class="mt-1 pl-1" id="menuGrid" hidden="@(!hide)">
-    <MudItem md="4" xs="12">
-        <h6 @onclick="ToggleMenu">@selectedPlaylist?.Description</h6>
-    </MudItem>
-    <MudItem md="4" xs="12">
-        <h6 @onclick="ToggleMenu">@chapterText</h6>
+<MudGrid Class="sticky-top mud-elevation-4" 
+         style="top: 64px; z-index: 2000; background-color: white; padding-bottom: 12px;">
+    <MudItem xs="12">
+        <MudGrid id="menuGrid" hidden="@(!hide)">
+            <MudItem md="4" xs="12">
+                <h6 @onclick="ToggleMenu">@selectedPlaylist?.Description</h6>
+            </MudItem>
+            <MudItem md="4" xs="12">
+                <h6 @onclick="ToggleMenu">@chapterText</h6>
+            </MudItem>
+        </MudGrid>
+
+        <!-- === REUSABLE AUDIO PLAYER (now supports segments) === -->
+
+            <AudioPlayer @ref="audioPlayer"
+                         PlayerId="fullChapterAudioPlayer"
+                         SourceUrl="@chapterAudio"
+                         @bind-HasPlayed="HasPlayed"
+                         @bind-Autoplay="Autoplay"
+                         @bind-Repeat="Repeat"
+                         SegmentStart="@CurrentSegmentStart"
+                         SegmentEnd="@CurrentSegmentEnd"
+                         OnEnded="OnTrackEnded"
+                         ShowSettingsToggles="true" />
+
+            <!-- Segment/Chapter navigation -->
+            <MudGrid Justify="Justify.SpaceBetween" Class="mt-1 stickyChapterNav" hidden="@(!hide)">
+                <MudItem>
+                    <MudFab Disabled="@loadingTrack" StartIcon="@Icons.Material.Filled.ChevronLeft" 
+                            Color="@Color.Dark" 
+                            @onclick="GoToPreviousSegment" 
+                            Size="Size.Small"
+                            Title="Previous segment" />
+                </MudItem>
+                <MudItem Class="d-flex justify-end">
+                    <MudFab Disabled="@loadingTrack" StartIcon="@Icons.Material.Filled.ChevronRight" 
+                            Color="@Color.Dark" 
+                            @onclick="GoToNextSegment" 
+                            Size="Size.Small"
+                            Title="Next segment" />
+                </MudItem>
+            </MudGrid>
     </MudItem>
 </MudGrid>
-
-<!-- === REUSABLE AUDIO PLAYER (now supports segments) === -->
-
-    <AudioPlayer @ref="audioPlayer"
-                 PlayerId="fullChapterAudioPlayer"
-                 SourceUrl="@chapterAudio"
-                 @bind-HasPlayed="HasPlayed"
-                 @bind-Autoplay="Autoplay"
-                 @bind-Repeat="Repeat"
-                 SegmentStart="@CurrentSegmentStart"
-                 SegmentEnd="@CurrentSegmentEnd"
-                 OnEnded="OnTrackEnded"
-                 ShowSettingsToggles="true" />
-
-    <!-- Segment/Chapter navigation -->
-    <MudGrid Justify="Justify.SpaceBetween" Class="mt-1 stickyChapterNav" hidden="@(!hide)">
-        <MudItem>
-            <MudFab Disabled="@loadingTrack" StartIcon="@Icons.Material.Filled.ChevronLeft" 
-                    Color="@Color.Dark" 
-                    @onclick="GoToPreviousSegment" 
-                    Size="Size.Small"
-                    Title="Previous segment" />
-        </MudItem>
-        <MudItem Class="d-flex justify-end">
-            <MudFab Disabled="@loadingTrack" StartIcon="@Icons.Material.Filled.ChevronRight" 
-                    Color="@Color.Dark" 
-                    @onclick="GoToNextSegment" 
-                    Size="Size.Small"
-                    Title="Next segment" />
-        </MudItem>
-    </MudGrid>
-</div>
 
 <!-- Playlist + Chapter/Verse expansion UI -->
 <MudGrid Class="mt-4 px-1" hidden="@(!hide)">
