@@ -277,8 +277,7 @@
                 if (!string.IsNullOrEmpty(_currentPlayingVerseId) && _currentPlayingVerseId != _lastScrolledVerseId)
                 {
                     _lastScrolledVerseId = _currentPlayingVerseId;
-                    _ = js.InvokeVoidAsync("eval",
-                        $"document.getElementById('{_currentPlayingVerseId}').scrollIntoView({{ behavior: 'smooth', block: 'start' }});");
+                    _ = js.InvokeVoidAsync("scrollToVerse", _currentPlayingVerseId);
                 }
             }
         }
