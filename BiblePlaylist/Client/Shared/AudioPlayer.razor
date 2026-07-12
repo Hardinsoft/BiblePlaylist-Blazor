@@ -37,6 +37,13 @@
     @if (ShowSettingsToggles)
     {
         <MudStack Row Justify="Justify.Center" Spacing="3" Class="mt-1">
+            <div class="d-flex align-left">
+                <MudFab Disabled="@LoadingTrack" StartIcon="@Icons.Material.Filled.ChevronLeft"
+                        Color="@Color.Dark"
+                        Size="Size.Small"
+                        @onclick="OnPrevious"
+                        Title="Previous segment" />
+            </div>
             <div class="d-flex align-center">
                 <MudToggleIconButton Toggled="@Autoplay"
                                      ToggledChanged="SetAutoplay"
@@ -59,6 +66,13 @@
                                      Size="Size.Small"
                                      Title="Repeat current segment" />
                 <MudText Typo="Typo.caption" Class="ml-1">Repeat</MudText>
+            </div>
+            <div class="d-flex align-right">
+                <MudFab Disabled="@LoadingTrack" StartIcon="@Icons.Material.Filled.ChevronRight"
+                        Color="@Color.Dark"
+                        Size="Size.Small"
+                        @onclick="OnNext"
+                        Title="Next segment" />
             </div>
         </MudStack>
     }
@@ -90,6 +104,12 @@
     public EventCallback<bool> RepeatChanged { get; set; }
 
     [Parameter]
+    public bool LoadingTrack { get; set; }
+
+    [Parameter]
+    public EventCallback<bool> LoadingTrackChanged { get; set; }
+
+    [Parameter]
     public bool ShowNativeControls { get; set; } = true;
 
     [Parameter]
@@ -105,6 +125,12 @@
     // Renamed from OnAudioEnded to avoid collision with the JSInvokable method below
     [Parameter]
     public EventCallback OnEnded { get; set; }
+
+    [Parameter]
+    public EventCallback OnPrevious { get; set; }
+
+    [Parameter]
+    public EventCallback OnNext { get; set; }
 
     private string _lastSourceUrl;
     private decimal? _lastSegmentStart;
