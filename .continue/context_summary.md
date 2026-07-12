@@ -111,3 +111,33 @@ This PR exemplifies clean async JS interop patterns in Blazor WASM and thoughtfu
 
 ---
 *Appended automatically via GitHub API update – no temp files or PowerShell required for this operation.*
+
+## Recent Development Work: Last Two Merged PRs (as of 2026-07-12) – Ascending Order
+
+### PR #13 – Implement Text-to-Speech (TTS) for playlist description + BookChapter/Segment VoiceText (merged 2026-07-10)
+**Summary:** Added full TTS narration support using the browser Web Speech API. The playlist description is spoken on the first segment, followed by BookChapter.VoiceText + Segment.VoiceText narration immediately before each audio segment plays.
+
+**Key Changes:**
+- New Promise-based `speakTextAsync` and `speakSequenceAsync` helpers in `audioplayer.js` (cancellable, error-handled).
+- Integrated into `PlayCurrentSegment()` with proper sequencing and `PauseAsync()` to prevent TTS/audio overlap.
+- Added `PauseAsync()` method to reusable `AudioPlayer.razor` + corresponding JS helper.
+- UX improvements: chapter/verse text updates *before* TTS starts; audio source reloads *after* narration.
+- New `EnableTts` user setting persisted via localStorage.
+- Hardened navigation against race conditions and rapid clicks.
+
+**Impact:** Enables a natural, hands-free narrated Bible playlist experience with smooth transitions between speech and audio.
+
+### PR #14 – feat(ui): dock audio player + auto-scroll playing verse + tighten spacing (merged 2026-07-12)
+**Summary:** Major desktop UI tightening featuring a docked/sticky audio player section and intelligent auto-scroll for the active verse.
+
+**Key Changes:**
+- Docked AudioPlayer and chevron navigation buttons in a sticky top container (below main AppBar) for persistent visibility while verses scroll below.
+- Implemented smooth auto-scroll to the currently playing verse via new named `scrollToVerse` JS function, with header offset and 150px buffer to keep it comfortably visible.
+- Tightened spacing: reduced margins on playlist description grid (`mt-0 py-1`) and added breathing room below docked header.
+- Improved alignment: wrapped docked section in `MudGrid` + `MudItem xs="12"` to match content width below.
+- Preserved subtle current-verse background highlight; cleaned up segment container styling.
+- Refactored scroll from `eval` to clean named function; decimal type consistency and MudBlazor `Expanded` property fix.
+
+**Impact:** Creates a more focused, always-visible media player experience. Controls stay docked, active verse auto-scrolls into view without manual effort, and the overall UI feels significantly more compact and polished.
+
+These two PRs continue the evolution toward a production-ready, narrated, segment-based Bible playlist with excellent desktop UX and mobile foundations.
