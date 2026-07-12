@@ -4,7 +4,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <ServiceWorkerAssetsManifest>service-worker-assets.js</ServiceWorkerAssetsManifest>
     <UserSecretsId>421951bd-8b0c-4012-a616-63a2c50eca3c</UserSecretsId>   
-    <Version>0.2.6.2</Version>
+    <Version>0.2.6.0</Version>
     <Authors>Greg Hardin</Authors>
     <Title>Bible Playlist</Title>
     <PublishTrimmed>false</PublishTrimmed>
@@ -40,5 +40,35 @@
   <ItemGroup>
     <Folder Include="Data\" />
   </ItemGroup>
+
+<!-- ====================================================== -->
+<!-- Cache Busting - Inject <Version> into index.html       -->
+<!-- ====================================================== -->
+<Target Name="InjectCacheBustVersion" AfterTargets="Publish">
+  <!-- Read version from <Version> element -->
+  <PropertyGroup>
+    <_CacheBustVersion Condition="'$(Version)' != ''">$(Version)</_CacheBustVersion>
+    <_CacheBustVersion Condition="'$(_CacheBustVersion)' == ''">dev</_CacheBustVersion>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <_IndexHtmlPath>$(PublishDir)wwwroot\index.html</_IndexHtmlPath>
+  </PropertyGroup>
+
+  <Message Text="Injecting cache bust version '$(_CacheBustVersion)' into index.html" Importance="high" />
+
+  <!-- Read index.html, replace placeholder, and write it back -->
+  <PropertyGroup>
+    <_IndexHtmlContent>$([System.IO.File]::ReadAllText('$(_IndexHtmlPath)'))</_IndexHtmlContent>
+    <_UpdatedContent>$([System.String]::Copy('$(_IndexHtmlContent)').Replace('{{CACHE_BUST_VERSION}}', '$(_CacheBustVersion)'))</_UpdatedContent>
+  </PropertyGroup>
+
+  <WriteLinesToFile 
+      File="$(_IndexHtmlPath)" 
+      Lines="$(_UpdatedContent)" 
+      Overwrite="true" />
+
+  <Message Text="✅ Cache bust version successfully injected" Importance="high" />
+</Target>
 
 </Project>
