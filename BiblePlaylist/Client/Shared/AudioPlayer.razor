@@ -235,6 +235,14 @@
         }
     }
 
+    public async Task SeekAsync(decimal time)
+    {
+        if (HasPlayed)
+        {
+            await JSRuntime.InvokeVoidAsync("seekAudioPlayer", PlayerId, time);
+        }
+    }
+
     [JSInvokable]
     public async Task OnAudioEnded()
     {
