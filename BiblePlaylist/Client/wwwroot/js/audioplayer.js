@@ -185,6 +185,13 @@ window.pauseAudioPlayer = (playerId) => {
     }
 };
 
+window.seekAudioPlayer = (playerId, time) => {
+    var audio = document.getElementById(playerId);
+    if (audio != null) {
+        audio.currentTime = time;
+    }
+};
+
 // Scroll to a specific verse element, accounting for the fixed MudAppBar header
 window.scrollToVerse = (id) => {
     const el = document.getElementById(id);

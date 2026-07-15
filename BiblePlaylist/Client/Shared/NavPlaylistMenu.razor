@@ -1,8 +1,9 @@
 @using BiblePlaylist.Client.Config
+@using BiblePlaylist.Client.Events
+@using BiblePlaylist.Shared.Bible
+@using BiblePlaylist.Shared.DTO
 @using BiblePlaylist.Shared.Data
 @using BiblePlaylist.Shared.Playlist
-@using BiblePlaylist.Client.Events
-@using BiblePlaylist.Shared.DTO
 @using Microsoft.Extensions.Logging
 @inject HttpClient Http
 @inject Blazored.LocalStorage.ILocalStorageService localStorage
@@ -100,7 +101,8 @@
                                                                                         _currentPlayingVerseId = verseId;
                                                                                     }
 
-                                                                                    <div id="@verseId" class="d-flex align-start mb-3"
+                                                                                    <div id="@verseId" @onclick="@(e => PlaySpecificVerse(chapter, segment, verse))"
+                                                                                         class="d-flex align-start mb-3"
                                                                                          style="@(isPlayingVerse ? "background-color: rgba(var(--mud-palette-primary-rgb), 0.12); border-radius: 4px; padding-left: 8px; margin-left: -4px;" : "")">
                                                                                         <MudText Typo="Typo.body1"
                                                                                                  Class="verse-number mr-4 font-weight-medium"
@@ -210,7 +212,7 @@
             SetLoadingTrack(value);
         }
     }
-    
+
 
     // === SEGMENT PLAYBACK SUPPORT ===
     private List<(BookChapter Chapter, Segment Segment)> _playlistSegments = new();
@@ -440,8 +442,25 @@
 
     private async Task PlaySpecificSegment(BookChapter chapter, Segment segment)
     {
+        if (chapter == null || segment == null) return;
+
+        if (CurrentSegment.HasValue && CurrentSegment.Value.Chapter == chapter && CurrentSegment.Value.Segment == segment) return;        
+
         _currentSegmentIndex = _playlistSegments.FindIndex(s => s.Segment == segment);
         await PlayCurrentSegment();
+    }
+
+    private async Task PlaySpecificVerse(BookChapter chapter, Segment segment, Verse verse)
+    {
+        if (chapter == null || segment == null || verse == null) return;
+
+        if (CurrentSegment.HasValue && CurrentSegment.Value.Chapter == chapter && CurrentSegment.Value.Segment == segment)
+        {
+            // If the verse is already in the current segment, just seek to it
+            _currentPlaybackTime = verse.AudioStart;           
+            await audioPlayer.SeekAsync(_currentPlaybackTime);
+        }
+
     }
 
     private async Task GoToNextSegment()

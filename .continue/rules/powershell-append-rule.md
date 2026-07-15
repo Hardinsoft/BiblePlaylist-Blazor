@@ -24,7 +24,7 @@ When you need to append content to `.continue/context_summary.md` (or any file),
 
 ### Rules the model must follow:
 
-- When appending the content add a markdown compatible separator so that the newly appended content will not be combined with existing content.
+- When appending the content add a paragraph break so that the newly appended content will not be combined with existing content.
 - For any content that is multi-line, contains special characters, quotes, or is longer than one simple line → **always use this temp file workflow**.
 - Never try to pass multi-line content directly via `powershell.exe -Command` or `echo`.
 - Always use a unique temp filename (include date/time or a short random string/GUID).
