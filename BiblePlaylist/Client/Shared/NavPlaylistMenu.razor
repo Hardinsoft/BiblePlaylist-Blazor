@@ -440,6 +440,10 @@
 
     private async Task PlaySpecificSegment(BookChapter chapter, Segment segment)
     {
+        if (chapter == null || segment == null) return;
+
+        if (CurrentSegment.HasValue && CurrentSegment.Value.Chapter == chapter && CurrentSegment.Value.Segment == segment) return;        
+
         _currentSegmentIndex = _playlistSegments.FindIndex(s => s.Segment == segment);
         await PlayCurrentSegment();
     }
