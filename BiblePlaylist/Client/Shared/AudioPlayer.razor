@@ -16,10 +16,10 @@
     @if (!HasPlayed)
     {
         <div class="d-flex justify-center">
-            <MudFab StartIcon="@Icons.Material.Filled.PlayCircle" 
+            <MudFab Disabled="@LoadingTrack" StartIcon="@((LoadingTrack) ? Icons.Material.Filled.PauseCircle : Icons.Material.Filled.PlayCircle)"
                     Size="Size.Medium" 
                     Color="Color.Primary" 
-                    OnClick="HandleInitialPlay"
+                    @onclick="OnPlay"
                     aria-label="Play audio" />
         </div>
     }
@@ -132,6 +132,9 @@
     [Parameter]
     public EventCallback OnNext { get; set; }
 
+    [Parameter]
+    public EventCallback OnPlay { get; set; }
+
     private string _lastSourceUrl;
     private decimal? _lastSegmentStart;
     private decimal? _lastSegmentEnd;
@@ -167,18 +170,7 @@
             await LoadCurrentTrack();
         }
         await base.OnParametersSetAsync();
-    }
-
-    private async Task HandleInitialPlay()
-    {
-        if (string.IsNullOrWhiteSpace(SourceUrl)) return;
-
-        HasPlayed = true;
-        await HasPlayedChanged.InvokeAsync(true);
-        StateHasChanged();
-
-        await LoadCurrentTrack();
-    }
+    }    
 
     private async Task SetAutoplay(bool value)
     {
