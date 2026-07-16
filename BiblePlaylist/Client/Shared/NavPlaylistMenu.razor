@@ -37,6 +37,7 @@
                          OnEnded="OnTrackEnded"
                          OnPrevious="GoToPreviousSegment"
                          OnNext="GoToNextSegment"
+                         OnPlay="PlayCurrentSegment"
                          ShowSettingsToggles="true" />
             
     </MudItem>
@@ -536,7 +537,7 @@
     }
 
     protected async Task OnTrackEnded()
-    {
+    {        
         StopPlaybackTimer();
 
         if (Repeat && ((_currentSegmentIndex + 1) == _playlistSegments.Count))
@@ -549,12 +550,7 @@
         if (Autoplay && _playlistSegments.Any())
         {
             await GoToNextSegment();
-        }
-        else
-        {
-            // Fallback to old chapter behavior if not in segment mode
-            await ChapterForward();
-        }
+        }        
     }
 
     public void Dispose()
