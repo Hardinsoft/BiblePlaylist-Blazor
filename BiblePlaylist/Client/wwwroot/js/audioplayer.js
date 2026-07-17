@@ -98,6 +98,7 @@ window.CheckAudioFile = (player, playerSource, src, autoplay = 0) => {
 };
 
 window.PlayAudioSegment = async (player, playerSource, src, audioStart, audioEnd) => {
+    var endCount = 0;
     var audio = document.getElementById(player);
     if (audio != null) {
         var audioSource = document.getElementById(playerSource);
@@ -105,13 +106,17 @@ window.PlayAudioSegment = async (player, playerSource, src, audioStart, audioEnd
             audioSource.src = src;            
             audio.load();
             audio.currentTime = audioStart;
-            audio.play().catch(() => {});
+            audio.play().catch((ex) => {console.warn(`Failed to play audio segment ${src} ${audioStart} ${audioEnd}`, ex)});
 
             audio.ontimeupdate = (ev) => {
                 if (audio.currentTime > audioEnd) {
+                    console.log(`Audio segment ended: ${src} ${audioStart} ${audioEnd}`);
+                    endCount = endCount + 1;
                     audio.pause();
                     if (window._audioDotNetHelpers[player]) {
-                        window._audioDotNetHelpers[player].invokeMethodAsync('OnAudioEnded');
+                        if (endCount === 1) {                           
+                            window._audioDotNetHelpers[player].invokeMethodAsync('OnAudioEnded');
+                        }
                     }
                 }
                 window.AudioCurrentTime = audio.currentTime;
