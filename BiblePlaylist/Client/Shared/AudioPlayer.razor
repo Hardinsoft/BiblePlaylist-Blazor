@@ -143,17 +143,15 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _dotNetRef = DotNetObjectReference.Create(this);
         await base.OnInitializedAsync();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender)
-        {
-            await JSRuntime.InvokeVoidAsync("initializeAudioPlayer", PlayerId, _dotNetRef);
-        }
-        await base.OnAfterRenderAsync(firstRender);
+        if (!firstRender) return;
+        
+        _dotNetRef = DotNetObjectReference.Create(this);
+        await JSRuntime.InvokeVoidAsync("initializeAudioPlayer", PlayerId, _dotNetRef);       
     }
 
     protected override async Task OnParametersSetAsync()
@@ -237,7 +235,9 @@
 
     [JSInvokable]
     public async Task OnAudioEnded()
-    {
+    {        
+        await HasPlayedChanged.InvokeAsync(HasPlayed);
+        await Task.Delay(2000); // Wait for 2 seconds before proceeding to the next track
         if (Repeat && !SegmentStart.HasValue)
         {
             await LoadCurrentTrack();
