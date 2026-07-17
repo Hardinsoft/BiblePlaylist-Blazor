@@ -110,7 +110,8 @@ window.PlayAudioSegment = async (player, playerSource, src, audioStart, audioEnd
 
             audio.ontimeupdate = (ev) => {
                 if (audio.currentTime > audioEnd) {
-                    console.log(`Audio segment ended: ${src} ${audioStart} ${audioEnd}`);
+                    var filename = window._getFilenameFromUrl(src);
+                    console.log(`Audio segment ended: ${filename} ${audioStart} ${audioEnd}`);
                     endCount = endCount + 1;
                     audio.pause();
                     if (window._audioDotNetHelpers[player]) {
@@ -138,11 +139,36 @@ window.ScrollToTop = () => {
     window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
 };
 
-function isCached() {
+window.isCached = () => {
     return window.caches.open(cacheName)
         .then(cache => cache.match(FILE_NAME))
         .then(Boolean);
-}
+};
+
+window._getFilenameFromUrl = (urlString) => {
+    try {
+        // 1. Use the native URL object to parse the string reliably.
+        const url = new URL(urlString);
+
+        // 2. The pathname contains the entire path after the domain. We need the last segment.
+        // Example: /refs/heads/media/audio/43-John-01.mp3
+        const pathname = url.pathname;
+
+        // 3. Split the pathname by '/' and take the last element.
+        // This elegantly handles trailing slashes or complex paths.
+        const segments = pathname.split('/').filter(segment => segment.length > 0);
+
+        if (segments.length === 0) {
+            return null; // Handle root URL case
+        }
+
+        return segments[segments.length - 1];
+
+    } catch (e) {
+        console.error("Error parsing the URL:", e);
+        return null;
+    }
+};
 
 // === Text-to-Speech (TTS) Support for Playlist descriptions and VoiceText ===
 // Uses Web Speech API (SpeechSynthesis). Speaks sequentially and waits for completion.
