@@ -214,6 +214,9 @@ window.pauseAudioPlayer = (playerId) => {
     if (audio != null) {
         audio.pause();
     }
+    if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+    }
 };
 
 window.seekAudioPlayer = (playerId, time) => {

@@ -12,9 +12,9 @@
 @inject IDelegateLibrary delegateLibrary
 @inject Endpoints endpoints
 
-<MudGrid Class="sticky-top mud-elevation-4 stick-to-menu-bottom"  Spacing="2">
+<MudGrid Class="sticky-top mud-elevation-4 stick-to-menu-bottom" hidden="@(hideChapters)" Spacing="2">
     <MudItem xs="12">
-        <MudGrid id="menuGrid" Spacing="2" hidden="@(!hide)">
+        <MudGrid id="menuGrid" Spacing="2" >
             <MudItem md="4" xs="12">
                 <MudText Typo="Typo.subtitle2" @onclick="ToggleMenu">@selectedPlaylist?.Description</MudText>
             </MudItem>
@@ -151,6 +151,7 @@
     private string selectedBookRef { get; set; }
     private bool hide { get; set; } = true;
     private bool hideChapters { get; set; } = true;
+    private bool hidePlaylists { get; set; } = false;
     private bool hideVerses { get; set; } = true;
     private bool loadingTrack { get; set; } = false;
 
@@ -371,9 +372,13 @@
         await InvokeAsync(StateHasChanged);
 
         // Auto-start first segment if autoplay is enabled
-        if (Autoplay && _currentSegmentIndex >= 0)
+        if (Autoplay && _currentSegmentIndex >= 0 && !hideChapters)
         {
             await PlayCurrentSegment();
+        }
+        else
+        {
+            await audioPlayer.PauseAsync();
         }
     }
 
