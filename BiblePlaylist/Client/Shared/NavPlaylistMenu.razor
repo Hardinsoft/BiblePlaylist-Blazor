@@ -1,3 +1,4 @@
+@using System.Threading
 @using BiblePlaylist.Client.Config
 @using BiblePlaylist.Client.Events
 @using BiblePlaylist.Shared.Bible
@@ -226,7 +227,7 @@
 
     // Cancellation for in-flight TTS + playback so toggling playlist selection (or starting a new segment)
     // reliably stops speech and prevents the previous PlayCurrentSegment from resuming after TTS.
-    private CancellationTokenSource _playbackCts = new();
+    //private CancellationTokenSource _playbackCts = new();
 
     private (BookChapter Chapter, Segment Segment)? CurrentSegment =>
         (_currentSegmentIndex >= 0 && _currentSegmentIndex < _playlistSegments.Count)
@@ -272,15 +273,7 @@
     /// Also stops the native audio element and speechSynthesis via PauseAsync.
     /// </summary>
     private async Task CancelPlaybackAsync()
-    {
-        try
-        {
-            _playbackCts.Cancel();
-        }
-        catch (ObjectDisposedException) { /* already disposed */ }
-
-        _playbackCts.Dispose();
-        _playbackCts = new CancellationTokenSource();
+    {      
 
         if (audioPlayer != null)
         {
@@ -414,19 +407,13 @@
 
     private async Task PlayCurrentSegment()
     {
-        if (CurrentSegment == null || audioPlayer == null) return;
-
-        // Capture the token for *this* invocation. Any later CancelPlaybackAsync will
-        // invalidate it so we bail out after TTS instead of starting audio.
-        var token = _playbackCts.Token;
+        if (CurrentSegment == null || audioPlayer == null) return;        
 
         // Pause any currently playing audio / cancel speech
         await audioPlayer.PauseAsync();
         SetLoadingTrack(true);
         OnHasPlayedChanged(false); // Ensure HasPlayed is false before TTS starts
-
-        if (token.IsCancellationRequested) return;
-
+        
         var (chapter, segment) = CurrentSegment.Value;
 
         // === UX: Update the visible chapter/verse text IMMEDIATELY ===
@@ -441,9 +428,7 @@
 
         // Force the UI (header text) to update right now, before TTS starts
         await InvokeAsync(StateHasChanged);
-
-        if (token.IsCancellationRequested) return;
-
+        
         // === TTS: Description (first segment) + BookChapter.VoiceText + Segment.VoiceText ===
         if (_enableTts)
         {            
@@ -469,11 +454,7 @@
             {                
                 await js.InvokeVoidAsync("speakSequenceAsync", textsToSpeak);
             }
-        }
-
-        // Critical guard: user may have toggled playlist selection (or navigated) while TTS was speaking.
-        // speechSynthesis.cancel() already stopped the audio; do not continue to load the track.
-        if (token.IsCancellationRequested) return;
+        }        
 
         // Only after narration completes (and we were not cancelled) do we switch the actual audio source
         chapterAudio = $"{endpoints.Audio}{chapter.Chapter?.AudioUrl}";
@@ -481,15 +462,7 @@
         OnHasPlayedChanged(true); // Mark HasPlayed as true after TTS completes        
         SetLoadingTrack(false);
         await audioPlayer.ReloadAsync();
-
-        if (token.IsCancellationRequested)
-        {
-            // Extremely narrow race: cancelled between the check and ReloadAsync
-            await audioPlayer.PauseAsync();
-            OnHasPlayedChanged(false);
-            return;
-        }
-
+        
         _currentPlaybackTime = CurrentSegmentStart ?? 0m;
         StartPlaybackTimer();
 
@@ -615,12 +588,6 @@
 
     public void Dispose()
     {
-        StopPlaybackTimer();
-        try
-        {
-            _playbackCts?.Cancel();
-            _playbackCts?.Dispose();
-        }
-        catch { /* ignore */ }
+        StopPlaybackTimer();        
     }
 }
