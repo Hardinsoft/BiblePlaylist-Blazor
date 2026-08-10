@@ -1,3 +1,4 @@
+@using System.Threading
 @using BiblePlaylist.Client.Config
 @using BiblePlaylist.Client.Events
 @using BiblePlaylist.Shared.Bible
@@ -12,9 +13,9 @@
 @inject IDelegateLibrary delegateLibrary
 @inject Endpoints endpoints
 
-<MudGrid Class="sticky-top mud-elevation-4 stick-to-menu-bottom"  Spacing="2">
+<MudGrid Class="sticky-top mud-elevation-4 stick-to-menu-bottom" hidden="@(hideChapters)" Spacing="2">
     <MudItem xs="12">
-        <MudGrid id="menuGrid" Spacing="2" hidden="@(!hide)">
+        <MudGrid id="menuGrid" Spacing="2" >
             <MudItem md="4" xs="12">
                 <MudText Typo="Typo.subtitle2" @onclick="ToggleMenu">@selectedPlaylist?.Description</MudText>
             </MudItem>
@@ -151,6 +152,7 @@
     private string selectedBookRef { get; set; }
     private bool hide { get; set; } = true;
     private bool hideChapters { get; set; } = true;
+    private bool hidePlaylists { get; set; } = false;
     private bool hideVerses { get; set; } = true;
     private bool loadingTrack { get; set; } = false;
 
@@ -223,6 +225,10 @@
     private string _currentPlayingVerseId;
     private string _lastScrolledVerseId;
 
+    // Cancellation for in-flight TTS + playback so toggling playlist selection (or starting a new segment)
+    // reliably stops speech and prevents the previous PlayCurrentSegment from resuming after TTS.
+    //private CancellationTokenSource _playbackCts = new();
+
     private (BookChapter Chapter, Segment Segment)? CurrentSegment =>
         (_currentSegmentIndex >= 0 && _currentSegmentIndex < _playlistSegments.Count)
             ? _playlistSegments[_currentSegmentIndex]
@@ -260,6 +266,23 @@
             _playbackTimer.Dispose();
             _playbackTimer = null;
         }
+    }
+
+    /// <summary>
+    /// Cancels any in-flight TTS/playback and creates a fresh token source.
+    /// Also stops the native audio element and speechSynthesis via PauseAsync.
+    /// </summary>
+    private async Task CancelPlaybackAsync()
+    {      
+
+        if (audioPlayer != null)
+        {
+            await audioPlayer.PauseAsync();
+        }
+
+        StopPlaybackTimer();
+        OnHasPlayedChanged(false);
+        SetLoadingTrack(false);
     }
 
     private async Task UpdatePlaybackPosition()
@@ -341,6 +364,10 @@
 
     protected async Task SelectPlaylist(Playlist playlist)
     {
+        // Always cancel any in-flight TTS/playback first so a previous PlayCurrentSegment
+        // cannot resume after its speakSequenceAsync await completes.
+        await CancelPlaybackAsync();
+
         selectedPlaylist = playlist;
 
         var bookChaptersResponse = await Http.PostAsJsonAsync<IList<BookChapter>>("playlist/inflate?key=NET", selectedPlaylist.BookChapters);
@@ -370,22 +397,23 @@
         hideChapters = !hideChapters;
         await InvokeAsync(StateHasChanged);
 
-        // Auto-start first segment if autoplay is enabled
-        if (Autoplay && _currentSegmentIndex >= 0)
+        // Auto-start first segment if autoplay is enabled and we just opened the playlist
+        if (Autoplay && _currentSegmentIndex >= 0 && !hideChapters)
         {
             await PlayCurrentSegment();
         }
+        // else: already cancelled + paused above
     }
 
     private async Task PlayCurrentSegment()
     {
-        if (CurrentSegment == null || audioPlayer == null) return;
+        if (CurrentSegment == null || audioPlayer == null) return;        
 
-        // Pause any currently playing audio
+        // Pause any currently playing audio / cancel speech
         await audioPlayer.PauseAsync();
         SetLoadingTrack(true);
         OnHasPlayedChanged(false); // Ensure HasPlayed is false before TTS starts
-
+        
         var (chapter, segment) = CurrentSegment.Value;
 
         // === UX: Update the visible chapter/verse text IMMEDIATELY ===
@@ -400,7 +428,7 @@
 
         // Force the UI (header text) to update right now, before TTS starts
         await InvokeAsync(StateHasChanged);
-
+        
         // === TTS: Description (first segment) + BookChapter.VoiceText + Segment.VoiceText ===
         if (_enableTts)
         {            
@@ -426,15 +454,15 @@
             {                
                 await js.InvokeVoidAsync("speakSequenceAsync", textsToSpeak);
             }
-        }
+        }        
 
-        // Only after narration completes do we switch the actual audio source
+        // Only after narration completes (and we were not cancelled) do we switch the actual audio source
         chapterAudio = $"{endpoints.Audio}{chapter.Chapter?.AudioUrl}";
 
         OnHasPlayedChanged(true); // Mark HasPlayed as true after TTS completes        
         SetLoadingTrack(false);
         await audioPlayer.ReloadAsync();
-
+        
         _currentPlaybackTime = CurrentSegmentStart ?? 0m;
         StartPlaybackTimer();
 
@@ -446,6 +474,9 @@
         if (chapter == null || segment == null) return;
 
         if (CurrentSegment.HasValue && CurrentSegment.Value.Chapter == chapter && CurrentSegment.Value.Segment == segment) return;        
+
+        // Cancel any previous in-flight play before starting the new segment
+        await CancelPlaybackAsync();
 
         _currentSegmentIndex = _playlistSegments.FindIndex(s => s.Segment == segment);
         await PlayCurrentSegment();
@@ -468,6 +499,7 @@
     {
         if (_playlistSegments.Count == 0) return;
 
+        await CancelPlaybackAsync();
         _currentSegmentIndex = (_currentSegmentIndex + 1) % _playlistSegments.Count;
         await PlayCurrentSegment();
     }
@@ -476,6 +508,7 @@
     {
         if (_playlistSegments.Count == 0) return;
 
+        await CancelPlaybackAsync();
         _currentSegmentIndex = (_currentSegmentIndex - 1 + _playlistSegments.Count) % _playlistSegments.Count;
         await PlayCurrentSegment();
     }
@@ -555,6 +588,6 @@
 
     public void Dispose()
     {
-        StopPlaybackTimer();
+        StopPlaybackTimer();        
     }
 }

@@ -4,7 +4,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <ServiceWorkerAssetsManifest>service-worker-assets.js</ServiceWorkerAssetsManifest>
     <UserSecretsId>421951bd-8b0c-4012-a616-63a2c50eca3c</UserSecretsId>   
-    <Version>0.2.6.6</Version>
+    <Version>0.2.6.7</Version>
     <Authors>Greg Hardin</Authors>
     <Title>Bible Playlist</Title>
     <PublishTrimmed>false</PublishTrimmed>
@@ -13,11 +13,11 @@
 
   <ItemGroup>    
     <PackageReference Include="Blazored.LocalStorage" Version="4.5.0" />    
-    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.8" />    
-    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.8" PrivateAssets="all" />    
-    <PackageReference Include="Microsoft.Extensions.Localization" Version="10.0.8" />    
-    <PackageReference Include="MudBlazor" Version="9.4.0" />
-    <PackageReference Include="System.Net.Http.Json" Version="10.0.8" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.10" />    
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.10" PrivateAssets="all" />    
+    <PackageReference Include="Microsoft.Extensions.Localization" Version="10.0.10" />    
+    <PackageReference Include="MudBlazor" Version="9.8.0" />
+    <PackageReference Include="System.Net.Http.Json" Version="10.0.10" />
   </ItemGroup>
 
   <ItemGroup>
@@ -63,10 +63,7 @@
     <_UpdatedContent>$([System.String]::Copy('$(_IndexHtmlContent)').Replace('{{CACHE_BUST_VERSION}}', '$(_CacheBustVersion)'))</_UpdatedContent>
   </PropertyGroup>
 
-  <WriteLinesToFile 
-      File="$(_IndexHtmlPath)" 
-      Lines="$(_UpdatedContent)" 
-      Overwrite="true" />
+  <WriteLinesToFile File="$(_IndexHtmlPath)" Lines="$(_UpdatedContent)" Overwrite="true" />
 
   <Message Text="✅ Cache bust version successfully injected" Importance="high" />
 </Target>

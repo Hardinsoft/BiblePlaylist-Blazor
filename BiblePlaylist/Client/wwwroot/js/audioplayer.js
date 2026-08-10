@@ -172,6 +172,7 @@ window._getFilenameFromUrl = (urlString) => {
 
 // === Text-to-Speech (TTS) Support for Playlist descriptions and VoiceText ===
 // Uses Web Speech API (SpeechSynthesis). Speaks sequentially and waits for completion.
+window.utterance;
 window.speakTextAsync = (text, rate = 0.92, pitch = 1.05) => {
     return new Promise((resolve) => {
         if (!('speechSynthesis' in window) || !text || typeof text !== 'string' || !text.trim()) {
@@ -180,16 +181,21 @@ window.speakTextAsync = (text, rate = 0.92, pitch = 1.05) => {
         }
         try {
             window.speechSynthesis.cancel();
-            const utterance = new SpeechSynthesisUtterance(text.trim());
-            utterance.rate = Math.max(0.5, Math.min(2.0, rate));
-            utterance.pitch = Math.max(0.5, Math.min(2.0, pitch));
-            utterance.volume = 0.85;
-            utterance.onend = () => resolve();
-            utterance.onerror = (event) => {
+            if(window.utterance)
+                window.utterance.text = text.trim();
+            else
+                window.utterance = new SpeechSynthesisUtterance(text.trim());
+
+            window.utterance.rate = Math.max(0.5, Math.min(2.0, rate));
+            window.utterance.pitch = Math.max(0.5, Math.min(2.0, pitch));
+            window.utterance.volume = 0.85;
+            window.utterance.onend = () => resolve();
+            window.utterance.onerror = (event) => {
                 console.warn('TTS playback error:', event);
                 resolve();
             };
             window.speechSynthesis.speak(utterance);
+            
         } catch (ex) {
             console.warn('TTS exception, continuing playback:', ex);
             resolve();
@@ -213,6 +219,9 @@ window.pauseAudioPlayer = (playerId) => {
     var audio = document.getElementById(playerId);
     if (audio != null) {
         audio.pause();
+    }
+    if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
     }
 };
 

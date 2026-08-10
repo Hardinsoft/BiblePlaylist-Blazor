@@ -219,10 +219,7 @@
     /// </summary>
     public async Task PauseAsync()
     {
-        if (HasPlayed)
-        {
-            await JSRuntime.InvokeVoidAsync("pauseAudioPlayer", PlayerId);
-        }
+       await JSRuntime.InvokeVoidAsync("pauseAudioPlayer", PlayerId);        
     }
 
     public async Task SeekAsync(decimal time)
