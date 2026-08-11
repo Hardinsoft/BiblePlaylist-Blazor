@@ -83,32 +83,45 @@
                                                         }
                                                         else
                                                         {
-                                                            <MudList Dense="true" clickable="true" Gutters="false">
-                                                                @foreach (var segment in chapter.Segments.OrderBy(s => s.VerseStart))
-                                                                {
-                                                                    <MudListItem @onclick="@(e => PlaySpecificSegment(chapter, segment))"
-                                                                                 Class="@(IsCurrentSegment(chapter, segment) ? "current-segment" : "")">
-                                                                        <ChildContent>
-                                                                            <div class="verse-container mt-2 mb-4 pl-4 @(IsCurrentSegment(chapter, segment) ? "mud-elevation-1" : "")"
-                                                                                 style="border-radius: 4px; padding: 12px;">
-                                                                                @foreach (var verse in segment.Verses)
+                                                            @* Drag-to-reorder segments. Order is the list order; auto-saves on drop. *@
+                                                            <MudDropContainer T="Segment"
+                                                                              Items="@chapter.Segments"
+                                                                              ItemsSelector="@((item, zone) => true)"
+                                                                              ItemDropped="@(info => OnSegmentDropped(chapter, info))"
+                                                                              Class="d-flex flex-column">
+                                                                <ChildContent>
+                                                                    <MudDropZone T="Segment"
+                                                                                 Identifier="@($"segments-{chapter.BookNumber}-{chapter.ChapterNumber}")"
+                                                                                 AllowReorder="true"
+                                                                                 Class="flex-grow-1 segment-drop-zone" />
+                                                                </ChildContent>
+                                                                <ItemRenderer>
+                                                                    <MudPaper Class="@($"pa-2 mb-2 segment-item {(IsCurrentSegment(chapter, context) ? "current-segment mud-elevation-1" : "")}")"
+                                                                              Style="cursor: grab; border-radius: 4px;"
+                                                                              @onclick="@(() => PlaySpecificSegment(chapter, context))">
+                                                                        <div class="d-flex align-start">
+                                                                            <MudIcon Icon="@Icons.Material.Filled.DragIndicator"
+                                                                                     Class="mr-2 mt-1 mud-text-secondary segment-drag-handle"
+                                                                                     Style="cursor: grab; flex-shrink: 0;" />
+                                                                            <div class="flex-grow-1 verse-container">
+                                                                                @foreach (var verse in context.Verses)
                                                                                 {
-                                                                                    bool isPlayingVerse = IsCurrentSegment(chapter, segment) &&
+                                                                                    bool isPlayingVerse = IsCurrentSegment(chapter, context) &&
                                                                                         _currentPlaybackTime >= verse.AudioStart &&
                                                                                         _currentPlaybackTime <= verse.AudioEnd;
 
-                                                                                    var verseId = $"verse-{chapter.ChapterNumber}-{segment.VerseStart}-{verse.Number}";
+                                                                                    var verseId = $"verse-{chapter.ChapterNumber}-{context.VerseStart}-{verse.Number}";
                                                                                     if (isPlayingVerse)
                                                                                     {
                                                                                         _currentPlayingVerseId = verseId;
                                                                                     }
 
-                                                                                    <div id="@verseId" @onclick="@(e => PlaySpecificVerse(chapter, segment, verse))"
-                                                                                         class="d-flex align-start mb-3"
+                                                                                    <div id="@verseId" @onclick:stopPropagation="true"
+                                                                                         @onclick="@(e => PlaySpecificVerse(chapter, context, verse))"
+                                                                                         class="d-flex align-start mb-2"
                                                                                          style="@(isPlayingVerse ? "background-color: rgba(var(--mud-palette-primary-rgb), 0.12); border-radius: 4px; padding-left: 8px; margin-left: -4px;" : "")">
                                                                                         <MudText Typo="Typo.body1"
-                                                                                                 Class="verse-number mr-4 font-weight-medium"
-                                                                                                 >
+                                                                                                 Class="verse-number mr-4 font-weight-medium">
                                                                                             @verse.Number
                                                                                         </MudText>
                                                                                         <div class="flex-grow-1 verse-text" style="font-size: 1.05rem; line-height: 1.55;">
@@ -117,10 +130,10 @@
                                                                                     </div>
                                                                                 }
                                                                             </div>
-                                                                        </ChildContent>
-                                                                    </MudListItem>
-                                                                }
-                                                            </MudList>
+                                                                        </div>
+                                                                    </MudPaper>
+                                                                </ItemRenderer>
+                                                            </MudDropContainer>
                                                         }
                                                     </ChildContent>
                                                 </MudExpansionPanel>
@@ -224,10 +237,6 @@
     private System.Timers.Timer? _playbackTimer;
     private string _currentPlayingVerseId;
     private string _lastScrolledVerseId;
-
-    // Cancellation for in-flight TTS + playback so toggling playlist selection (or starting a new segment)
-    // reliably stops speech and prevents the previous PlayCurrentSegment from resuming after TTS.
-    //private CancellationTokenSource _playbackCts = new();
 
     private (BookChapter Chapter, Segment Segment)? CurrentSegment =>
         (_currentSegmentIndex >= 0 && _currentSegmentIndex < _playlistSegments.Count)
@@ -379,18 +388,8 @@
         selectedPlaylist.BookChapters.Clear();
         inflatedBookChapters.ForEach(bc => selectedPlaylist.BookChapters.Add(bc));
 
-        // Build flat segment list for sequential playback
-        _playlistSegments.Clear();
-        foreach (var chapter in selectedPlaylist.BookChapters)
-        {
-            if (chapter.Segments != null)
-            {
-                foreach (var segment in chapter.Segments.OrderBy(s => s.VerseStart))
-                {
-                    _playlistSegments.Add((chapter, segment));
-                }
-            }
-        }
+        // Build flat segment list for sequential playback (respects list order)
+        RebuildPlaylistSegments();
 
         _currentSegmentIndex = _playlistSegments.Any() ? 0 : -1;
 
@@ -403,6 +402,75 @@
             await PlayCurrentSegment();
         }
         // else: already cancelled + paused above
+    }
+
+    /// <summary>
+    /// Rebuild the flat playback list from the current BookChapters / Segments list order.
+    /// Does NOT sort by VerseStart — order is authoritative (supports drag-reorder).
+    /// </summary>
+    private void RebuildPlaylistSegments()
+    {
+        _playlistSegments.Clear();
+        if (selectedPlaylist?.BookChapters == null) return;
+
+        foreach (var chapter in selectedPlaylist.BookChapters)
+        {
+            if (chapter.Segments == null) continue;
+            foreach (var segment in chapter.Segments)
+            {
+                _playlistSegments.Add((chapter, segment));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Called when a segment is dropped after a drag. Reorders the chapter's Segments list,
+    /// rebuilds the flat playback list, keeps the currently-playing segment index in sync,
+    /// and auto-saves the library. Does NOT interrupt playback of another segment.
+    /// </summary>
+    private async Task OnSegmentDropped(BookChapter chapter, MudItemDropInfo<Segment> dropItem)
+    {
+        if (chapter?.Segments == null || dropItem?.Item == null) return;
+
+        // Remember what is currently playing so we can keep the same segment after reorder
+        var playingSegment = CurrentSegment?.Segment;
+
+        var list = chapter.Segments;
+        list.Remove(dropItem.Item);
+
+        var newIndex = dropItem.IndexInZone;
+        if (newIndex < 0) newIndex = list.Count;
+        if (newIndex > list.Count) newIndex = list.Count;
+        list.Insert(newIndex, dropItem.Item);
+
+        RebuildPlaylistSegments();
+
+        // Preserve the currently playing segment (reorder is allowed while playing)
+        if (playingSegment != null)
+        {
+            _currentSegmentIndex = _playlistSegments.FindIndex(s => s.Segment == playingSegment);
+        }
+
+        await SaveLibraryAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task SaveLibraryAsync()
+    {
+        if (Library == null) return;
+
+        try
+        {
+            var response = await Http.PutAsJsonAsync("library", Library);
+            if (!response.IsSuccessStatusCode)
+            {
+                logger.LogWarning("Failed to save library after segment reorder. Status: {StatusCode}", response.StatusCode);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error saving library after segment reorder");
+        }
     }
 
     private async Task PlayCurrentSegment()
