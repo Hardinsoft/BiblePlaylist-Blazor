@@ -1,37 +1,43 @@
-@* 
+@*
     Reusable AudioPlayer.razor
-    Expertly extracted for BiblePlaylist to encapsulate audio playback, 
+    Expertly extracted for BiblePlaylist to encapsulate audio playback,
     MudBlazor controls, and JS interop.
     Supports sharing between PlaylistPlayer.razor and NavPlaylistMenu.razor
 
     Supports both:
     - Full chapter playback (default)
     - Segment/time-range playback (when SegmentStart and SegmentEnd are provided)
+
+    IMPORTANT: The <audio> element is ALWAYS present in the DOM (hidden when !HasPlayed).
+    This is required so that loadAudioFile / PlayAudioSegment can reliably find the
+    element and attach the onended handler. Conditional rendering caused a race where
+    JS interop ran before the element existed, so onended never fired and auto-advance
+    (ChapterEnded) never ran.
 *@
 @using Microsoft.JSInterop
 @inject IJSRuntime JSRuntime
 @implements IAsyncDisposable
 
 <div class="audio-player-container pa-1">
+    @* Always keep the audio element in the DOM so JS interop can find it *@
+    <audio id="@PlayerId"
+           controls="@ShowNativeControls"
+           class="w-100"
+           style="max-height: 40px; @(HasPlayed ? null : "display:none")">
+        <source id="@($"{PlayerId}Source")" src="@SourceUrl" type="audio/mpeg" />
+        Your browser does not support the audio element.
+    </audio>
+
     @if (!HasPlayed)
     {
         <div class="d-flex justify-center">
-            <MudFab Disabled="@LoadingTrack" StartIcon="@((LoadingTrack) ? Icons.Material.Filled.PauseCircle : Icons.Material.Filled.PlayCircle)"
-                    Size="Size.Medium" 
-                    Color="Color.Primary" 
+            <MudFab Disabled="@LoadingTrack"
+                    StartIcon="@((LoadingTrack) ? Icons.Material.Filled.PauseCircle : Icons.Material.Filled.PlayCircle)"
+                    Size="Size.Medium"
+                    Color="Color.Primary"
                     @onclick="OnPlay"
                     aria-label="Play audio" />
         </div>
-    }
-    else
-    {
-        <audio id="@PlayerId" 
-               controls="@ShowNativeControls"
-               class="w-100"
-               style="max-height: 40px;">
-            <source id="@($"{PlayerId}Source")" src="@SourceUrl" type="audio/mpeg" />
-            Your browser does not support the audio element.
-        </audio>
     }
 
     @if (ShowSettingsToggles)
@@ -141,17 +147,13 @@
 
     private DotNetObjectReference<AudioPlayer> _dotNetRef;
 
-    protected override async Task OnInitializedAsync()
-    {
-        await base.OnInitializedAsync();
-    }
-
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender) return;
-        
-        _dotNetRef = DotNetObjectReference.Create(this);
-        await JSRuntime.InvokeVoidAsync("initializeAudioPlayer", PlayerId, _dotNetRef);       
+        if (firstRender)
+        {
+            _dotNetRef = DotNetObjectReference.Create(this);
+            await JSRuntime.InvokeVoidAsync("initializeAudioPlayer", PlayerId, _dotNetRef);
+        }
     }
 
     protected override async Task OnParametersSetAsync()
@@ -159,6 +161,7 @@
         bool sourceChanged = SourceUrl != _lastSourceUrl;
         bool segmentChanged = SegmentStart != _lastSegmentStart || SegmentEnd != _lastSegmentEnd;
 
+        // Element is now always in the DOM, so it is safe to call JS interop here.
         if (HasPlayed && !string.IsNullOrWhiteSpace(SourceUrl) && (sourceChanged || segmentChanged))
         {
             _lastSourceUrl = SourceUrl;
@@ -168,7 +171,7 @@
             await LoadCurrentTrack();
         }
         await base.OnParametersSetAsync();
-    }    
+    }
 
     private async Task SetAutoplay(bool value)
     {
@@ -219,7 +222,7 @@
     /// </summary>
     public async Task PauseAsync()
     {
-       await JSRuntime.InvokeVoidAsync("pauseAudioPlayer", PlayerId);        
+        await JSRuntime.InvokeVoidAsync("pauseAudioPlayer", PlayerId);
     }
 
     public async Task PlayAsync()
@@ -237,7 +240,7 @@
 
     [JSInvokable]
     public async Task OnAudioEnded()
-    {        
+    {
         await HasPlayedChanged.InvokeAsync(HasPlayed);
         await Task.Delay(2000); // Wait for 2 seconds before proceeding to the next track
         if (Repeat && !SegmentStart.HasValue)
