@@ -14,6 +14,7 @@ window.initializeAudioPlayer = (playerId, dotNetHelper) => {
 
 // New load function supporting multiple players and the new component
 window.loadAudioFile = async (playerId, playerSourceId, src, autoplay = false, repeat = false) => {
+    debugger;
     var audio = document.getElementById(playerId);
     if (audio != null) {
         var audioSource = document.getElementById(playerSourceId);
@@ -219,6 +220,16 @@ window.pauseAudioPlayer = (playerId) => {
     var audio = document.getElementById(playerId);
     if (audio != null) {
         audio.pause();
+    }
+    if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+    }
+};
+
+window.playAudioPlayer = (playerId) => {
+    var audio = document.getElementById(playerId);
+    if (audio != null) {
+        audio.play();
     }
     if ('speechSynthesis' in window) {
         window.speechSynthesis.cancel();

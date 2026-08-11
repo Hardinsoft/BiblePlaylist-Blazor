@@ -222,6 +222,11 @@
        await JSRuntime.InvokeVoidAsync("pauseAudioPlayer", PlayerId);        
     }
 
+    public async Task PlayAsync()
+    {
+        await JSRuntime.InvokeVoidAsync("playAudioPlayer", PlayerId);
+    }
+
     public async Task SeekAsync(decimal time)
     {
         if (HasPlayed)
