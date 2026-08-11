@@ -1,5 +1,29 @@
-﻿ul.no-bullets {
+ul.no-bullets {
     list-style-type: none;
     margin: 0;
     padding: 0;
+}
+
+.segment-drop-zone {
+    min-height: 2rem;
+}
+
+.segment-item {
+    transition: box-shadow 0.15s ease, background-color 0.15s ease;
+}
+
+.segment-item:active {
+    cursor: grabbing;
+}
+
+.segment-drag-handle {
+    opacity: 0.55;
+}
+
+.segment-item:hover .segment-drag-handle {
+    opacity: 1;
+}
+
+.current-segment {
+    background-color: rgba(var(--mud-palette-primary-rgb), 0.06);
 }
