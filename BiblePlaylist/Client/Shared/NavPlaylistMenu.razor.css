@@ -4,23 +4,19 @@ ul.no-bullets {
     padding: 0;
 }
 
-.segment-drop-zone {
+.chapter-drop-zone {
     min-height: 2rem;
 }
 
-.segment-item {
-    transition: box-shadow 0.15s ease, background-color 0.15s ease;
+.playlist-chapter-panel {
+    transition: box-shadow 0.15s ease;
 }
 
-.segment-item:active {
-    cursor: grabbing;
-}
-
-.segment-drag-handle {
+.chapter-drag-handle {
     opacity: 0.55;
 }
 
-.segment-item:hover .segment-drag-handle {
+.playlist-chapter-panel:hover .chapter-drag-handle {
     opacity: 1;
 }
 
