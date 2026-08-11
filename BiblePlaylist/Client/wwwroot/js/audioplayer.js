@@ -15,31 +15,41 @@ window.initializeAudioPlayer = (playerId, dotNetHelper) => {
 // New load function supporting multiple players and the new component
 window.loadAudioFile = async (playerId, playerSourceId, src, autoplay = false, repeat = false) => {
     var audio = document.getElementById(playerId);
-    if (audio != null) {
-        var audioSource = document.getElementById(playerSourceId);
-        if (audioSource != null) {
-            audioSource.src = src;
-            audio.load();
-
-            if (autoplay) {
-                audio.play().catch(() => { /* autoplay blocked */ });
-            }
-
-            audio.onended = (ev) => {
-                var helper = window._audioDotNetHelpers[playerId];
-                if (helper) {
-                    helper.invokeMethodAsync('OnAudioEnded');
-                } else if (window.DotNetHelper) {
-                    // Fallback for legacy components
-                    window.DotNetHelper.invokeMethodAsync('ChapterEnded');
-                }
-            };
-
-            audio.ontimeupdate = (ev) => {
-                window.AudioCurrentTime = audio.currentTime;
-            };
-        }
+    if (audio == null) {
+        console.warn(`loadAudioFile: element #${playerId} not found in DOM`);
+        return;
     }
+
+    var audioSource = document.getElementById(playerSourceId);
+    if (audioSource == null) {
+        console.warn(`loadAudioFile: source element #${playerSourceId} not found`);
+        return;
+    }
+
+    // Clear previous handlers to avoid duplicates after source changes / reloads
+    audio.onended = null;
+    audio.ontimeupdate = null;
+
+    audioSource.src = src;
+    audio.load();
+
+    if (autoplay) {
+        audio.play().catch(() => { /* autoplay blocked */ });
+    }
+
+    audio.onended = (ev) => {
+        var helper = window._audioDotNetHelpers[playerId];
+        if (helper) {
+            helper.invokeMethodAsync('OnAudioEnded');
+        } else if (window.DotNetHelper) {
+            // Fallback for legacy components
+            window.DotNetHelper.invokeMethodAsync('ChapterEnded');
+        }
+    };
+
+    audio.ontimeupdate = (ev) => {
+        window.AudioCurrentTime = audio.currentTime;
+    };
 };
 
 // Legacy function kept for backward compatibility during transition
@@ -103,7 +113,7 @@ window.PlayAudioSegment = async (player, playerSource, src, audioStart, audioEnd
     if (audio != null) {
         var audioSource = document.getElementById(playerSource);
         if (audioSource != null) {
-            audioSource.src = src;            
+            audioSource.src = src;
             audio.load();
             audio.currentTime = audioStart;
             audio.play().catch((ex) => {console.warn(`Failed to play audio segment ${src} ${audioStart} ${audioEnd}`, ex)});
@@ -115,7 +125,7 @@ window.PlayAudioSegment = async (player, playerSource, src, audioStart, audioEnd
                     endCount = endCount + 1;
                     audio.pause();
                     if (window._audioDotNetHelpers[player]) {
-                        if (endCount === 1) {                           
+                        if (endCount === 1) {
                             window._audioDotNetHelpers[player].invokeMethodAsync('OnAudioEnded');
                         }
                     }
@@ -130,8 +140,8 @@ window.SetNetObject = (dotNetHelper) => {
     window.DotNetHelper = dotNetHelper;
 };
 
-window.NavToBook = (bookName) => {     
-    var httpPath = '//' + location.host + location.pathname;    
+window.NavToBook = (bookName) => {
+    var httpPath = '//' + location.host + location.pathname;
     document.location.href = httpPath + bookName;
 };
 
@@ -195,7 +205,7 @@ window.speakTextAsync = (text, rate = 0.92, pitch = 1.05) => {
                 resolve();
             };
             window.speechSynthesis.speak(utterance);
-            
+
         } catch (ex) {
             console.warn('TTS exception, continuing playback:', ex);
             resolve();
@@ -219,6 +229,16 @@ window.pauseAudioPlayer = (playerId) => {
     var audio = document.getElementById(playerId);
     if (audio != null) {
         audio.pause();
+    }
+    if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+    }
+};
+
+window.playAudioPlayer = (playerId) => {
+    var audio = document.getElementById(playerId);
+    if (audio != null) {
+        audio.play();
     }
     if ('speechSynthesis' in window) {
         window.speechSynthesis.cancel();
