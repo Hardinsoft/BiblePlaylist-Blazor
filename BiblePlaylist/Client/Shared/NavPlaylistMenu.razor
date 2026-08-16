@@ -70,7 +70,8 @@
                                     {
                                         @* Drag-reorder playlist chapters (e.g. John 1:1-9 before/after Luke 2:1-39).
                                            Verses inside a chapter are immutable. *@
-                                        <MudDropContainer T="BookChapter"
+                                        <MudDropContainer @ref="_dropContainer"
+                                                          T="BookChapter"
                                                           Items="@selectedPlaylist.BookChapters"
                                                           ItemsSelector="@((item, zone) => true)"
                                                           ItemDropped="OnBookChapterDropped"
@@ -114,10 +115,6 @@
                                                                                 _currentPlaybackTime <= verse.AudioEnd;
 
                                                                             var verseId = $"verse-{context.ChapterNumber}-{segment.VerseStart}-{verse.Number}";
-                                                                            if (isPlayingVerse)
-                                                                            {
-                                                                                _currentPlayingVerseId = verseId;
-                                                                            }
 
                                                                             <div id="@verseId" @onclick:stopPropagation="true"
                                                                                  @onclick="@(e => PlaySpecificVerse(context, segment, verse))"
@@ -158,6 +155,7 @@
 
 @code {
     private AudioPlayer audioPlayer;
+    private MudDropContainer<BookChapter> _dropContainer;
 
     private BiblePlaylist.Shared.DTO.SelectedBookChapter SelectedBookChapter { get; set; }
     private BiblePlaylist.Shared.Navigation.BibleMenu bibleMenu { get; set; }
@@ -306,17 +304,41 @@
         try
         {
             decimal time = await js.InvokeAsync<decimal>("GetAudioCurrentTime");
-            if (Math.Abs(time - _currentPlaybackTime) > 0.05m)
-            {
-                _currentPlaybackTime = time;
-                await InvokeAsync(StateHasChanged);
+            if (Math.Abs(time - _currentPlaybackTime) <= 0.05m)
+                return;
 
-                // Scroll to the currently playing verse if it has changed
-                if (!string.IsNullOrEmpty(_currentPlayingVerseId) && _currentPlayingVerseId != _lastScrolledVerseId)
+            _currentPlaybackTime = time;
+
+            // Resolve the active verse from data (not during render) so scroll + highlight stay in sync
+            string playingVerseId = null;
+            if (CurrentSegment.HasValue)
+            {
+                var (chapter, segment) = CurrentSegment.Value;
+                var verse = segment.Verses?.FirstOrDefault(v =>
+                    _currentPlaybackTime >= v.AudioStart &&
+                    _currentPlaybackTime <= v.AudioEnd);
+
+                if (verse != null)
                 {
-                    _lastScrolledVerseId = _currentPlayingVerseId;
-                    _ = js.InvokeVoidAsync("scrollToVerse", _currentPlayingVerseId);
+                    playingVerseId = $"verse-{chapter.ChapterNumber}-{segment.VerseStart}-{verse.Number}";
                 }
+            }
+
+            _currentPlayingVerseId = playingVerseId;
+
+            // MudDropContainer does not re-render ItemRenderer on parent StateHasChanged alone.
+            // Refresh() forces the verse highlight styles inside the drop items to update.
+            await InvokeAsync(() =>
+            {
+                _dropContainer?.Refresh();
+                StateHasChanged();
+            });
+
+            if (!string.IsNullOrEmpty(_currentPlayingVerseId) &&
+                _currentPlayingVerseId != _lastScrolledVerseId)
+            {
+                _lastScrolledVerseId = _currentPlayingVerseId;
+                await js.InvokeVoidAsync("scrollToVerse", _currentPlayingVerseId);
             }
         }
         catch
@@ -454,7 +476,12 @@
         }
 
         await SaveLibraryAsync();
-        await InvokeAsync(StateHasChanged);
+
+        await InvokeAsync(() =>
+        {
+            _dropContainer?.Refresh();
+            StateHasChanged();
+        });
     }
 
     private async Task SaveLibraryAsync()
@@ -497,7 +524,11 @@
         chapterText = $"{chapter.Book?.Name} {chapter.ChapterNumber}:{segment.VerseStart}-{segment.VerseEnd}";
 
         // Force the UI (header text) to update right now, before TTS starts
-        await InvokeAsync(StateHasChanged);
+        await InvokeAsync(() =>
+        {
+            _dropContainer?.Refresh();
+            StateHasChanged();
+        });
         
         // === TTS: Description (first segment) + BookChapter.VoiceText + Segment.VoiceText ===
         if (_enableTts)
@@ -534,7 +565,15 @@
         await audioPlayer.ReloadAsync();
         
         _currentPlaybackTime = CurrentSegmentStart ?? 0m;
+        _lastScrolledVerseId = null;
+        _currentPlayingVerseId = null;
         StartPlaybackTimer();
+
+        await InvokeAsync(() =>
+        {
+            _dropContainer?.Refresh();
+            StateHasChanged();
+        });
 
         await js.InvokeVoidAsync("ScrollToTop");
     }
@@ -561,6 +600,13 @@
             // If the verse is already in the current segment, just seek to it
             _currentPlaybackTime = verse.AudioStart;           
             await audioPlayer.SeekAsync(_currentPlaybackTime);
+
+            // Refresh highlight immediately after seek
+            await InvokeAsync(() =>
+            {
+                _dropContainer?.Refresh();
+                StateHasChanged();
+            });
         }
 
     }
