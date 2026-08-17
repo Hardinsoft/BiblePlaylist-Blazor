@@ -67,15 +67,33 @@
                                         </MudAlert>
                                     }
                                     else
-                                    {                                        
-
-                                        <MudExpansionPanels multiExpand="true">
-                                            @foreach (var chapter in selectedPlaylist.BookChapters)
-                                            {
-                                                <MudExpansionPanel Text="@chapter.Display" Expanded="IsCurrentChapter(chapter)" >
-                                                    <ChildContent >                                                        
-
-                                                        @if (chapter.Segments == null || !chapter.Segments.Any())
+                                    {
+                                        @* Drag-reorder playlist chapters (e.g. John 1:1-9 before/after Luke 2:1-39).
+                                           Verses inside a chapter are immutable. *@
+                                        <MudDropContainer @ref="_dropContainer"
+                                                          T="BookChapter"
+                                                          Items="@selectedPlaylist.BookChapters"
+                                                          ItemsSelector="@((item, zone) => true)"
+                                                          ItemDropped="OnBookChapterDropped"
+                                                          Class="d-flex flex-column playlist-chapter-drop-container">
+                                            <ChildContent>
+                                                <MudDropZone T="BookChapter"
+                                                             Identifier="playlist-chapters"
+                                                             AllowReorder="true"
+                                                             Class="flex-grow-1 chapter-drop-zone" />
+                                            </ChildContent>
+                                            <ItemRenderer>
+                                                <MudExpansionPanel Expanded="IsCurrentChapter(context)" Class="mb-1 playlist-chapter-panel">
+                                                    <TitleContent>
+                                                        <div class="d-flex align-center gap-2" style="width: 100%;">
+                                                            <MudIcon Icon="@Icons.Material.Filled.DragIndicator"
+                                                                     Class="mud-text-secondary chapter-drag-handle"
+                                                                     Style="cursor: grab; flex-shrink: 0;" />
+                                                            <MudText Typo="Typo.subtitle1" Class="flex-grow-1">@context.Display</MudText>
+                                                        </div>
+                                                    </TitleContent>
+                                                    <ChildContent>
+                                                        @if (context.Segments == null || !context.Segments.Any())
                                                         {
                                                             <MudAlert Severity="Severity.Warning" Variant="Variant.Text" Dense="true">
                                                                 No segments defined for this chapter.
@@ -83,49 +101,42 @@
                                                         }
                                                         else
                                                         {
-                                                            <MudList Dense="true" clickable="true" Gutters="false">
-                                                                @foreach (var segment in chapter.Segments.OrderBy(s => s.VerseStart))
-                                                                {
-                                                                    <MudListItem @onclick="@(e => PlaySpecificSegment(chapter, segment))"
-                                                                                 Class="@(IsCurrentSegment(chapter, segment) ? "current-segment" : "")">
-                                                                        <ChildContent>
-                                                                            <div class="verse-container mt-2 mb-4 pl-4 @(IsCurrentSegment(chapter, segment) ? "mud-elevation-1" : "")"
-                                                                                 style="border-radius: 4px; padding: 12px;">
-                                                                                @foreach (var verse in segment.Verses)
-                                                                                {
-                                                                                    bool isPlayingVerse = IsCurrentSegment(chapter, segment) &&
-                                                                                        _currentPlaybackTime >= verse.AudioStart &&
-                                                                                        _currentPlaybackTime <= verse.AudioEnd;
+                                                            @* Verses are display-only / playable — not draggable *@
+                                                            @foreach (var segment in context.Segments)
+                                                            {
+                                                                <MudPaper Class="@($"pa-2 mb-2 {(IsCurrentSegment(context, segment) ? "current-segment mud-elevation-1" : "")}")"
+                                                                          Style="border-radius: 4px; cursor: pointer;"
+                                                                          @onclick="@(() => PlaySpecificSegment(context, segment))">
+                                                                    <div class="verse-container">
+                                                                        @foreach (var verse in segment.Verses)
+                                                                        {
+                                                                            bool isPlayingVerse = IsCurrentSegment(context, segment) &&
+                                                                                _currentPlaybackTime >= verse.AudioStart &&
+                                                                                _currentPlaybackTime <= verse.AudioEnd;
 
-                                                                                    var verseId = $"verse-{chapter.ChapterNumber}-{segment.VerseStart}-{verse.Number}";
-                                                                                    if (isPlayingVerse)
-                                                                                    {
-                                                                                        _currentPlayingVerseId = verseId;
-                                                                                    }
+                                                                            var verseId = $"verse-{context.ChapterNumber}-{segment.VerseStart}-{verse.Number}";
 
-                                                                                    <div id="@verseId" @onclick="@(e => PlaySpecificVerse(chapter, segment, verse))"
-                                                                                         class="d-flex align-start mb-3"
-                                                                                         style="@(isPlayingVerse ? "background-color: rgba(var(--mud-palette-primary-rgb), 0.12); border-radius: 4px; padding-left: 8px; margin-left: -4px;" : "")">
-                                                                                        <MudText Typo="Typo.body1"
-                                                                                                 Class="verse-number mr-4 font-weight-medium"
-                                                                                                 >
-                                                                                            @verse.Number
-                                                                                        </MudText>
-                                                                                        <div class="flex-grow-1 verse-text" style="font-size: 1.05rem; line-height: 1.55;">
-                                                                                            @((MarkupString)verse.Html)
-                                                                                        </div>
-                                                                                    </div>
-                                                                                }
+                                                                            <div id="@verseId" @onclick:stopPropagation="true"
+                                                                                 @onclick="@(e => PlaySpecificVerse(context, segment, verse))"
+                                                                                 class="d-flex align-start mb-2"
+                                                                                 style="@(isPlayingVerse ? "background-color: rgba(var(--mud-palette-primary-rgb), 0.12); border-radius: 4px; padding-left: 8px; margin-left: -4px;" : "")">
+                                                                                <MudText Typo="Typo.body1"
+                                                                                         Class="verse-number mr-4 font-weight-medium">
+                                                                                    @verse.Number
+                                                                                </MudText>
+                                                                                <div class="flex-grow-1 verse-text" style="font-size: 1.05rem; line-height: 1.55;">
+                                                                                    @((MarkupString)verse.Html)
+                                                                                </div>
                                                                             </div>
-                                                                        </ChildContent>
-                                                                    </MudListItem>
-                                                                }
-                                                            </MudList>
+                                                                        }
+                                                                    </div>
+                                                                </MudPaper>
+                                                            }
                                                         }
                                                     </ChildContent>
                                                 </MudExpansionPanel>
-                                            }
-                                        </MudExpansionPanels>
+                                            </ItemRenderer>
+                                        </MudDropContainer>
                                     }
                                 }
                             </MudGrid>
@@ -144,6 +155,7 @@
 
 @code {
     private AudioPlayer audioPlayer;
+    private MudDropContainer<BookChapter> _dropContainer;
 
     private BiblePlaylist.Shared.DTO.SelectedBookChapter SelectedBookChapter { get; set; }
     private BiblePlaylist.Shared.Navigation.BibleMenu bibleMenu { get; set; }
@@ -225,10 +237,6 @@
     private string _currentPlayingVerseId;
     private string _lastScrolledVerseId;
 
-    // Cancellation for in-flight TTS + playback so toggling playlist selection (or starting a new segment)
-    // reliably stops speech and prevents the previous PlayCurrentSegment from resuming after TTS.
-    //private CancellationTokenSource _playbackCts = new();
-
     private (BookChapter Chapter, Segment Segment)? CurrentSegment =>
         (_currentSegmentIndex >= 0 && _currentSegmentIndex < _playlistSegments.Count)
             ? _playlistSegments[_currentSegmentIndex]
@@ -296,17 +304,41 @@
         try
         {
             decimal time = await js.InvokeAsync<decimal>("GetAudioCurrentTime");
-            if (Math.Abs(time - _currentPlaybackTime) > 0.05m)
-            {
-                _currentPlaybackTime = time;
-                await InvokeAsync(StateHasChanged);
+            if (Math.Abs(time - _currentPlaybackTime) <= 0.05m)
+                return;
 
-                // Scroll to the currently playing verse if it has changed
-                if (!string.IsNullOrEmpty(_currentPlayingVerseId) && _currentPlayingVerseId != _lastScrolledVerseId)
+            _currentPlaybackTime = time;
+
+            // Resolve the active verse from data (not during render) so scroll + highlight stay in sync
+            string playingVerseId = null;
+            if (CurrentSegment.HasValue)
+            {
+                var (chapter, segment) = CurrentSegment.Value;
+                var verse = segment.Verses?.FirstOrDefault(v =>
+                    _currentPlaybackTime >= v.AudioStart &&
+                    _currentPlaybackTime <= v.AudioEnd);
+
+                if (verse != null)
                 {
-                    _lastScrolledVerseId = _currentPlayingVerseId;
-                    _ = js.InvokeVoidAsync("scrollToVerse", _currentPlayingVerseId);
+                    playingVerseId = $"verse-{chapter.ChapterNumber}-{segment.VerseStart}-{verse.Number}";
                 }
+            }
+
+            _currentPlayingVerseId = playingVerseId;
+
+            // MudDropContainer does not re-render ItemRenderer on parent StateHasChanged alone.
+            // Refresh() forces the verse highlight styles inside the drop items to update.
+            await InvokeAsync(() =>
+            {
+                _dropContainer?.Refresh();
+                StateHasChanged();
+            });
+
+            if (!string.IsNullOrEmpty(_currentPlayingVerseId) &&
+                _currentPlayingVerseId != _lastScrolledVerseId)
+            {
+                _lastScrolledVerseId = _currentPlayingVerseId;
+                await js.InvokeVoidAsync("scrollToVerse", _currentPlayingVerseId);
             }
         }
         catch
@@ -379,18 +411,8 @@
         selectedPlaylist.BookChapters.Clear();
         inflatedBookChapters.ForEach(bc => selectedPlaylist.BookChapters.Add(bc));
 
-        // Build flat segment list for sequential playback
-        _playlistSegments.Clear();
-        foreach (var chapter in selectedPlaylist.BookChapters)
-        {
-            if (chapter.Segments != null)
-            {
-                foreach (var segment in chapter.Segments.OrderBy(s => s.VerseStart))
-                {
-                    _playlistSegments.Add((chapter, segment));
-                }
-            }
-        }
+        // Build flat segment list for sequential playback (respects BookChapters list order)
+        RebuildPlaylistSegments();
 
         _currentSegmentIndex = _playlistSegments.Any() ? 0 : -1;
 
@@ -403,6 +425,81 @@
             await PlayCurrentSegment();
         }
         // else: already cancelled + paused above
+    }
+
+    /// <summary>
+    /// Rebuild the flat playback list from the current BookChapters / Segments list order.
+    /// BookChapter order is authoritative (supports drag-reorder of playlist entries).
+    /// </summary>
+    private void RebuildPlaylistSegments()
+    {
+        _playlistSegments.Clear();
+        if (selectedPlaylist?.BookChapters == null) return;
+
+        foreach (var chapter in selectedPlaylist.BookChapters)
+        {
+            if (chapter.Segments == null) continue;
+            foreach (var segment in chapter.Segments)
+            {
+                _playlistSegments.Add((chapter, segment));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Called when a playlist chapter (BookChapter) is dropped after a drag.
+    /// Reorders selectedPlaylist.BookChapters, rebuilds the flat playback list,
+    /// keeps the currently-playing segment index in sync, and auto-saves.
+    /// Does NOT interrupt playback of another segment.
+    /// </summary>
+    private async Task OnBookChapterDropped(MudItemDropInfo<BookChapter> dropItem)
+    {
+        if (selectedPlaylist?.BookChapters == null || dropItem?.Item == null) return;
+
+        // Remember what is currently playing so we can keep the same segment after reorder
+        var playingSegment = CurrentSegment?.Segment;
+
+        var list = selectedPlaylist.BookChapters;
+        list.Remove(dropItem.Item);
+
+        var newIndex = dropItem.IndexInZone;
+        if (newIndex < 0) newIndex = list.Count;
+        if (newIndex > list.Count) newIndex = list.Count;
+        list.Insert(newIndex, dropItem.Item);
+
+        RebuildPlaylistSegments();
+
+        // Preserve the currently playing segment (reorder is allowed while playing)
+        if (playingSegment != null)
+        {
+            _currentSegmentIndex = _playlistSegments.FindIndex(s => s.Segment == playingSegment);
+        }
+
+        await SaveLibraryAsync();
+
+        await InvokeAsync(() =>
+        {
+            _dropContainer?.Refresh();
+            StateHasChanged();
+        });
+    }
+
+    private async Task SaveLibraryAsync()
+    {
+        if (Library == null) return;
+
+        try
+        {
+            var response = await Http.PutAsJsonAsync("library", Library);
+            if (!response.IsSuccessStatusCode)
+            {
+                logger.LogWarning("Failed to save library after chapter reorder. Status: {StatusCode}", response.StatusCode);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error saving library after chapter reorder");
+        }
     }
 
     private async Task PlayCurrentSegment()
@@ -427,7 +524,11 @@
         chapterText = $"{chapter.Book?.Name} {chapter.ChapterNumber}:{segment.VerseStart}-{segment.VerseEnd}";
 
         // Force the UI (header text) to update right now, before TTS starts
-        await InvokeAsync(StateHasChanged);
+        await InvokeAsync(() =>
+        {
+            _dropContainer?.Refresh();
+            StateHasChanged();
+        });
         
         // === TTS: Description (first segment) + BookChapter.VoiceText + Segment.VoiceText ===
         if (_enableTts)
@@ -464,7 +565,15 @@
         await audioPlayer.ReloadAsync();
         
         _currentPlaybackTime = CurrentSegmentStart ?? 0m;
+        _lastScrolledVerseId = null;
+        _currentPlayingVerseId = null;
         StartPlaybackTimer();
+
+        await InvokeAsync(() =>
+        {
+            _dropContainer?.Refresh();
+            StateHasChanged();
+        });
 
         await js.InvokeVoidAsync("ScrollToTop");
     }
@@ -491,6 +600,13 @@
             // If the verse is already in the current segment, just seek to it
             _currentPlaybackTime = verse.AudioStart;           
             await audioPlayer.SeekAsync(_currentPlaybackTime);
+
+            // Refresh highlight immediately after seek
+            await InvokeAsync(() =>
+            {
+                _dropContainer?.Refresh();
+                StateHasChanged();
+            });
         }
 
     }

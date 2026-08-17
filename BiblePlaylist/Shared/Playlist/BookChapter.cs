@@ -1,4 +1,4 @@
-﻿using BiblePlaylist.Shared.Bible;
+using BiblePlaylist.Shared.Bible;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -49,8 +49,8 @@ namespace BiblePlaylist.Shared.Playlist
                 return $"{bookName} {chapterStr}";
             }
 
+            // Respect the stored list order (supports drag-to-reorder)
             var ranges = Segments
-                .OrderBy(s => s.VerseStart)
                 .Select(s =>
                     s.VerseStart == s.VerseEnd
                         ? s.VerseStart.ToString()
