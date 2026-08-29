@@ -5,6 +5,7 @@
 @using BiblePlaylist.Shared.DTO
 @using BiblePlaylist.Shared.Data
 @using BiblePlaylist.Shared.Playlist
+@using Microsoft.AspNetCore.Components
 @using Microsoft.Extensions.Logging
 @inject HttpClient Http
 @inject Blazored.LocalStorage.ILocalStorageService localStorage
@@ -12,6 +13,8 @@
 @inject ILogger<NavBibleMenu> logger
 @inject IDelegateLibrary delegateLibrary
 @inject Endpoints endpoints
+@inject NavigationManager NavManager
+@inject ISnackbar Snackbar
 
 <MudGrid Class="sticky-top mud-elevation-4 stick-to-menu-bottom" hidden="@(hideChapters)" Spacing="2">
     <MudItem xs="12">
@@ -107,28 +110,39 @@
                                                                 <MudPaper Class="@($"pa-2 mb-2 {(IsCurrentSegment(context, segment) ? "current-segment mud-elevation-1" : "")}")"
                                                                           Style="border-radius: 4px; cursor: pointer;"
                                                                           @onclick="@(() => PlaySpecificSegment(context, segment))">
-                                                                    <div class="verse-container">
-                                                                        @foreach (var verse in segment.Verses)
-                                                                        {
-                                                                            bool isPlayingVerse = IsCurrentSegment(context, segment) &&
-                                                                                _currentPlaybackTime >= verse.AudioStart &&
-                                                                                _currentPlaybackTime <= verse.AudioEnd;
+                                                                    <div class="d-flex justify-content-between verse-container">
+                                                                        <div class="verse-list">
+                                                                            @foreach (var verse in segment.Verses)
+                                                                            {
+                                                                                bool isPlayingVerse = IsCurrentSegment(context, segment) &&
+                                                                                    _currentPlaybackTime >= verse.AudioStart &&
+                                                                                    _currentPlaybackTime <= verse.AudioEnd;
 
-                                                                            var verseId = $"verse-{context.ChapterNumber}-{segment.VerseStart}-{verse.Number}";
+                                                                                var verseId = $"verse-{context.ChapterNumber}-{segment.VerseStart}-{verse.Number}";
 
-                                                                            <div id="@verseId" @onclick:stopPropagation="true"
-                                                                                 @onclick="@(e => PlaySpecificVerse(context, segment, verse))"
-                                                                                 class="d-flex align-start mb-2"
-                                                                                 style="@(isPlayingVerse ? "background-color: rgba(var(--mud-palette-primary-rgb), 0.12); border-radius: 4px; padding-left: 8px; margin-left: -4px;" : "")">
-                                                                                <MudText Typo="Typo.body1"
-                                                                                         Class="verse-number mr-4 font-weight-medium">
-                                                                                    @verse.Number
-                                                                                </MudText>
-                                                                                <div class="flex-grow-1 verse-text" style="font-size: 1.05rem; line-height: 1.55;">
-                                                                                    @((MarkupString)verse.Html)
+                                                                                <div id="@verseId" @onclick:stopPropagation="true"
+                                                                                     @onclick="@(e => PlaySpecificVerse(context, segment, verse))"
+                                                                                     class="d-flex align-start mb-2"
+                                                                                     style="@(isPlayingVerse ? "background-color: rgba(var(--mud-palette-primary-rgb), 0.12); border-radius: 4px; padding-left: 8px; margin-left: -4px;" : "")">
+                                                                                    <MudText Typo="Typo.body1"
+                                                                                             Class="verse-number mr-4 font-weight-medium">
+                                                                                        @verse.Number
+                                                                                    </MudText>
+                                                                                    <div class="flex-grow-1 verse-text" style="font-size: 1.05rem; line-height: 1.55;">
+                                                                                        @((MarkupString)verse.Html)
+                                                                                    </div>
                                                                                 </div>
-                                                                            </div>
-                                                                        }
+                                                                            }
+                                                                        </div>
+                                                                        <MudMenu Icon="@Icons.Material.Filled.MoreVert"
+                                                                                 AriaLabel="Segment options"
+                                                                                 @onclick:stopPropagation="true">
+                                                                            <MudMenuItem Label="Edit segment"
+                                                                                         @onclick="() => NavigateToEdit(context, segment)" />
+                                                                            <MudMenuItem Label="Delete segment"
+                                                                                         Color="Color.Error"
+                                                                                         @onclick="() => DeleteSegment(context, segment)" />
+                                                                        </MudMenu>
                                                                     </div>
                                                                 </MudPaper>
                                                             }
@@ -704,6 +718,41 @@
 
     public void Dispose()
     {
-        StopPlaybackTimer();        
+        StopPlaybackTimer();
+    }
+
+    private string GetPlaylistKey()
+    {
+        return Library?.Playlists?.FirstOrDefault(p => p.Name == selectedPlaylist?.Name)?.Key
+               ?? selectedPlaylist?.Key
+               ?? string.Empty;
+    }
+
+    private void NavigateToEdit(BookChapter chapter, Segment segment)
+    {
+        var playlistKey = GetPlaylistKey();
+        var query = $"book={chapter.BookNumber}&chapter={chapter.ChapterNumber}&playlist={System.Net.WebUtility.UrlEncode(playlistKey)}&segmentStart={segment.VerseStart}&segmentEnd={segment.VerseEnd}";
+        NavManager.NavigateTo($"/edit-segment?{query}");
+    }
+
+    private async Task DeleteSegment(BookChapter chapter, Segment segment)
+    {
+        if (chapter?.Segments == null || segment == null) return;
+
+        chapter.Segments.Remove(segment);
+        RebuildPlaylistSegments();
+        _currentSegmentIndex = _playlistSegments.Any()
+            ? _playlistSegments.FindIndex(s => s.Chapter == chapter)
+            : -1;
+
+        await SaveLibraryAsync();
+
+        Snackbar.Add($"Segment '{segment.VerseStart}-{segment.VerseEnd}' deleted.", Severity.Info);
+
+        await InvokeAsync(() =>
+        {
+            _dropContainer?.Refresh();
+            StateHasChanged();
+        });
     }
 }
