@@ -1,4 +1,5 @@
 @page "/edit-segment"
+@implements IDisposable
 @using BiblePlaylist.Client.Events
 @using BiblePlaylist.Client.Shared
 @using BiblePlaylist.Shared.Bible
@@ -7,6 +8,7 @@
 @using Microsoft.AspNetCore.Components
 @using Microsoft.Extensions.Logging
 @using MudBlazor
+@using System.Timers
 @inject HttpClient Http
 @inject Blazored.LocalStorage.ILocalStorageService localStorage
 @inject IJSRuntime JSRuntime
@@ -119,6 +121,7 @@
     private decimal _segmentStartAudio;
     private decimal _segmentEndAudio;
     private string _chapterAudioUrl;
+    private System.Timers.Timer? _playbackTimer;
 
     protected override async Task OnInitializedAsync()
     {
@@ -282,9 +285,29 @@
         _segmentEndAudio = lastVerse?.AudioEnd ?? 0;
     }
 
-    private void TogglePlayback()
+    private async Task TogglePlayback()
     {
-        _isPlaying = !_isPlaying;
+        if (_segmentStartAudio <= 0 || _segmentEndAudio <= 0 || _selectedVerseNumbers.Count == 0)
+        {
+            Snackbar.Add("Select at least one verse with valid audio bounds to play.", Severity.Warning);
+            return;
+        }
+
+        if (_isPlaying)
+        {
+            await JSRuntime.InvokeVoidAsync("pauseAudioPlayer", "segmentEditorPlayer");
+            StopPlaybackTimer();
+            _isPlaying = false;
+            _currentPlayingVerseId = null;
+        }
+        else
+        {
+            await JSRuntime.InvokeVoidAsync("initializeAudioPlayer", "segmentEditorPlayer");
+            await JSRuntime.InvokeVoidAsync("loadAudioFile", _chapterAudioUrl, "segmentEditorPlayer");
+            await JSRuntime.InvokeVoidAsync("PlayAudioSegment", _segmentStartAudio, _segmentEndAudio, "segmentEditorPlayer");
+            StartPlaybackTimer();
+            _isPlaying = true;
+        }
         StateHasChanged();
     }
 
@@ -304,7 +327,7 @@
         return null;
     }
 
-    private void SaveSegment()
+    private async Task SaveSegment()
     {
         if (_selectedVerseNumbers.Count == 0)
         {
@@ -323,8 +346,93 @@
                 .ToList()
         };
 
-        Snackbar.Add($"Segment {min}-{max} saved (demo — persistence coming next commit).", Severity.Success);
-        NavManager.NavigateTo("..");
+        await PersistSegmentAsync(newSegment);
+    }
+
+    private async Task PersistSegmentAsync(Segment segment)
+    {
+        if (string.IsNullOrEmpty(PlaylistKey))
+        {
+            Snackbar.Add("Cannot save: playlist key is missing.", Severity.Error);
+            return;
+        }
+
+        try
+        {
+            var libResponse = await Http.GetStringAsync($"library?key={PlaylistKey}");
+            var library = Newtonsoft.Json.JsonConvert.DeserializeObject<BiblePlaylist.Shared.Data.Library>(libResponse);
+            if (library == null)
+            {
+                Snackbar.Add("Could not load library for saving.", Severity.Error);
+                return;
+            }
+
+            var playlist = library.Playlists?.FirstOrDefault(p => p.Key == PlaylistKey);
+            if (playlist == null)
+            {
+                Snackbar.Add("Playlist not found.", Severity.Error);
+                return;
+            }
+
+            var bookChapter = playlist.BookChapters?
+                .FirstOrDefault(bc => bc.BookNumber == BookNumber && bc.ChapterNumber == ChapterNumber);
+
+            if (bookChapter == null)
+            {
+                Snackbar.Add("Chapter not found in playlist.", Severity.Error);
+                return;
+            }
+
+            if (Mode == SegmentMode.Edit)
+            {
+                var existing = bookChapter.Segments?
+                    .FirstOrDefault(s => s.VerseStart == segment.VerseStart && s.VerseEnd == segment.VerseEnd);
+                // If the range changed, find by the old range stored in the URL query
+                if (existing == null)
+                {
+                    var oldStart = ParseInt(query("segmentStart"));
+                    var oldEnd = ParseInt(query("segmentEnd"));
+                    existing = bookChapter.Segments?
+                        .FirstOrDefault(s => s.VerseStart == oldStart && s.VerseEnd == oldEnd);
+                }
+
+                if (existing != null)
+                {
+                    var idx = bookChapter.Segments.IndexOf(existing);
+                    if (idx >= 0)
+                        bookChapter.Segments[idx] = segment;
+                }
+                else
+                {
+                    // Edge case: segment not found by range — add as new
+                    if (bookChapter.Segments == null)
+                        bookChapter.Segments = new List<Segment>();
+                    bookChapter.Segments.Add(segment);
+                }
+            }
+            else // Create mode
+            {
+                if (bookChapter.Segments == null)
+                    bookChapter.Segments = new List<Segment>();
+                bookChapter.Segments.Add(segment);
+            }
+
+            var response = await Http.PutAsJsonAsync("library", library);
+            if (!response.IsSuccessStatusCode)
+            {
+                logger.LogWarning("Failed to save library. Status: {StatusCode}", response.StatusCode);
+                Snackbar.Add("Save failed. See console for details.", Severity.Error);
+                return;
+            }
+
+            Snackbar.Add($"Segment {segment.VerseStart}-{segment.VerseEnd} saved.", Severity.Success);
+            NavManager.NavigateTo("..");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error saving segment");
+            Snackbar.Add("Save failed. See console for details.", Severity.Error);
+        }
     }
 
     private string? query(string key)
@@ -344,5 +452,39 @@
         if (int.TryParse(value, out var result))
             return result;
         return 0;
+    }
+
+    private void StartPlaybackTimer()
+    {
+        _playbackTimer?.Dispose();
+        _playbackTimer = new System.Timers.Timer(300);
+        _playbackTimer.Elapsed += async (s, e) =>
+        {
+            try
+            {
+                var time = await JSRuntime.InvokeAsync<double>("GetAudioCurrentTime", "segmentEditorPlayer");
+                var verseId = ResolveCurrentVerseId((decimal)time);
+                if (verseId != null && verseId != _currentPlayingVerseId)
+                {
+                    _currentPlayingVerseId = verseId;
+                    await JSRuntime.InvokeVoidAsync("scrollToVerse", verseId);
+                    StateHasChanged();
+                }
+            }
+            catch { }
+        };
+        _playbackTimer.Start();
+    }
+
+    private void StopPlaybackTimer()
+    {
+        _playbackTimer?.Stop();
+        _playbackTimer?.Dispose();
+        _playbackTimer = null;
+    }
+
+    public void Dispose()
+    {
+        StopPlaybackTimer();
     }
 }
