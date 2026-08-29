@@ -1,0 +1,348 @@
+@page "/edit-segment"
+@using BiblePlaylist.Client.Events
+@using BiblePlaylist.Client.Shared
+@using BiblePlaylist.Shared.Bible
+@using BiblePlaylist.Shared.DTO
+@using BiblePlaylist.Shared.Playlist
+@using Microsoft.AspNetCore.Components
+@using Microsoft.Extensions.Logging
+@using MudBlazor
+@inject HttpClient Http
+@inject Blazored.LocalStorage.ILocalStorageService localStorage
+@inject IJSRuntime JSRuntime
+@inject ILogger<SegmentEditor> logger
+@inject IDelegateLibrary delegateLibrary
+@inject Config.Endpoints endpoints
+@inject NavigationManager NavManager
+@inject ISnackbar Snackbar
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-3">
+    @if (!isInitialized)
+    {
+        <MudParagraph>Loading...</MudParagraph>
+    }
+    else if (!chapterLoaded)
+    {
+        <MudAlert Severity="Severity.Error">
+            Could not load chapter @BookNumber @ChapterNumber.
+        </MudAlert>
+    }
+    else
+    {
+        <!-- Top bar: chapter ref + Play/Stop + Save/Cancel -->
+        <MudStack Row Spacing="2" Class="mb-3" Align="Align.Center">
+            <MudText Typo="Typo.h5" Class="flex-grow-1">@chapterReference</MudText>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="TogglePlayback">
+                @if (_isPlaying)
+                {
+                    <MudIcon Icon="@Icons.Material.Filled.Stop" />
+                }
+                else
+                {
+                    <MudIcon Icon="@Icons.Material.Filled.PlayArrow" />
+                }
+                @(_isPlaying ? "Stop" : "Play segment")
+            </MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveSegment">Save</MudButton>
+            <MudButton Variant="Variant.Text" Color="Color.Secondary" OnClick="CancelEdit">Cancel</MudButton>
+        </MudStack>
+
+        @if (Mode == SegmentMode.Create && _selectedVerseNumbers.Count == 0)
+        {
+            <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="mb-3">
+                Select verses to create a new segment.
+            </MudAlert>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="mb-3">
+                Segment: @(ShowSegmentRange())
+            </MudAlert>
+        }
+
+        @if (Mode == SegmentMode.Edit && _selectedVerseNumbers.Count == 0)
+        {
+            <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="mb-3">
+                No verses selected. Either add verses or delete the segment.
+            </MudAlert>
+        }
+
+        <!-- Verse list -->
+        @foreach (var verse in displayVerses)
+        {
+            var verseNumber = verse.Number;
+            var isSelected = _selectedVerseNumbers.Contains(verseNumber);
+            var verseId = $"verse-{BookNumber}-{verseNumber}";
+            var isPlaying = isSelected && _currentPlayingVerseId == verseId;
+            var verseStyle = isSelected
+                ? "cursor: pointer; background-color: rgba(var(--mud-palette-primary-rgb), 0.10); border-left: 4px solid var(--mud-palette-primary);"
+                : "cursor: pointer;";
+
+            <MudPaper Class="pa-2 mb-2"
+                      Style="@verseStyle">
+                <div class="d-flex align-start" @onclick="() => ToggleVerse(verseNumber)">
+                    <MudText Typo="Typo.body1" Class="mr-3 font-weight-medium">@verseNumber</MudText>
+                    <div class="flex-grow-1 @(isPlaying ? "playing-verse" : "")">
+                        @(new MarkupString(verse.Html))
+                    </div>
+                </div>
+            </MudPaper>
+        }
+    }
+</MudContainer>
+
+<!-- Hidden audio element for playback (always in DOM) -->
+<audio id="segmentEditorAudioPlayer"
+       class="w-100"
+       style="max-height: 40px;">
+    <source id="segmentEditorAudioPlayerSource" src="" type="audio/mpeg" />
+</audio>
+
+@code {
+    private enum SegmentMode
+    {
+        Create,
+        Edit
+    }
+
+    private bool isInitialized;
+    private bool chapterLoaded;
+    private string chapterReference;
+    private List<Verse> displayVerses = new();
+    private HashSet<int> _selectedVerseNumbers = new();
+    private string _currentPlayingVerseId;
+    private bool _isPlaying;
+    private int BookNumber;
+    private int ChapterNumber;
+    private string PlaylistKey;
+    private SegmentMode Mode = SegmentMode.Edit;
+    private decimal _segmentStartAudio;
+    private decimal _segmentEndAudio;
+    private string _chapterAudioUrl;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var uri = new Uri(NavManager.Uri);
+        var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
+
+        if (int.TryParse(query["book"], out var book))
+            BookNumber = book;
+        if (int.TryParse(query["chapter"], out var chapter))
+            ChapterNumber = chapter;
+        PlaylistKey = query["playlist"] ?? "";
+
+        if (int.TryParse(query["segmentStart"], out var segStart)
+            && int.TryParse(query["segmentEnd"], out var segEnd))
+        {
+            Mode = SegmentMode.Edit;
+            _selectedVerseNumbers = new HashSet<int>();
+        }
+        else
+        {
+            Mode = SegmentMode.Create;
+            _selectedVerseNumbers = new HashSet<int>();
+        }
+
+        await LoadChapterAsync();
+
+        isInitialized = true;
+        StateHasChanged();
+    }
+
+    private async Task LoadChapterAsync()
+    {
+        try
+        {
+            var response = await Http.GetAsync($"Version?key={BiblePlaylist.Shared.Structs.Version.NET}&Book={BookNumber}&Chapter={ChapterNumber}");
+            if (!response.IsSuccessStatusCode)
+            {
+                chapterLoaded = false;
+                return;
+            }
+
+            var version = await response.Content.ReadFromJsonAsync<BiblePlaylist.Shared.Bible.Version>();
+            if (version == null)
+            {
+                chapterLoaded = false;
+                return;
+            }
+
+            var chapterObj = version.Books
+                .Where(b => b.Number == BookNumber)
+                .SelectMany(b => b.Chapters)
+                .FirstOrDefault(c => c.Number == ChapterNumber);
+
+            if (chapterObj == null)
+            {
+                chapterLoaded = false;
+                return;
+            }
+
+            displayVerses = chapterObj.Verses?.ToList() ?? new List<Verse>();
+            _chapterAudioUrl = chapterObj.AudioUrl ?? "";
+
+            chapterReference = $"{version.Books.FirstOrDefault(b => b.Number == BookNumber)?.Name} {ChapterNumber}";
+
+            if (Mode == SegmentMode.Edit)
+            {
+                await LoadPlaylistAndSegmentAsync();
+            }
+
+            chapterLoaded = true;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error loading chapter {Book} {Chapter}", BookNumber, ChapterNumber);
+            chapterLoaded = false;
+        }
+    }
+
+    private async Task LoadPlaylistAndSegmentAsync()
+    {
+        if (string.IsNullOrEmpty(PlaylistKey))
+        {
+            Mode = SegmentMode.Create;
+            return;
+        }
+
+        try
+        {
+            var libResponse = await Http.GetStringAsync($"library?key={PlaylistKey}");
+            var library = Newtonsoft.Json.JsonConvert.DeserializeObject<BiblePlaylist.Shared.Data.Library>(libResponse);
+            if (library == null) return;
+
+            var playlist = library.Playlists?.FirstOrDefault(p => p.Key == PlaylistKey);
+            if (playlist == null) return;
+
+            var bookChapter = playlist.BookChapters?
+                .FirstOrDefault(bc => bc.BookNumber == BookNumber && bc.ChapterNumber == ChapterNumber);
+
+            if (bookChapter?.Segments == null) return;
+
+            var segment = bookChapter.Segments
+                .FirstOrDefault(s => s.VerseStart == ParseInt(query("segmentStart")) && s.VerseEnd == ParseInt(query("segmentEnd")));
+
+            if (segment != null)
+            {
+                Mode = SegmentMode.Edit;
+                foreach (var v in segment.Verses)
+                    _selectedVerseNumbers.Add(v.Number);
+                _segmentStartAudio = segment.Verses?.FirstOrDefault()?.AudioStart ?? 0;
+                _segmentEndAudio = segment.Verses?.LastOrDefault()?.AudioEnd ?? 0;
+            }
+            else
+            {
+                Mode = SegmentMode.Create;
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error loading playlist segment");
+            Mode = SegmentMode.Create;
+        }
+    }
+
+    private string ShowSegmentRange()
+    {
+        if (_selectedVerseNumbers.Count == 0)
+            return "not yet defined";
+
+        var min = _selectedVerseNumbers.Min();
+        var max = _selectedVerseNumbers.Max();
+        return $"{min}-{max} ({_selectedVerseNumbers.Count} verses)";
+    }
+
+    private void ToggleVerse(int verseNumber)
+    {
+        if (_selectedVerseNumbers.Contains(verseNumber))
+            _selectedVerseNumbers.Remove(verseNumber);
+        else
+            _selectedVerseNumbers.Add(verseNumber);
+
+        RecomputeSegmentRange();
+        StateHasChanged();
+    }
+
+    private void RecomputeSegmentRange()
+    {
+        if (_selectedVerseNumbers.Count == 0)
+        {
+            _segmentStartAudio = 0;
+            _segmentEndAudio = 0;
+            return;
+        }
+
+        var minNum = _selectedVerseNumbers.Min();
+        var maxNum = _selectedVerseNumbers.Max();
+
+        var firstVerse = displayVerses.FirstOrDefault(v => v.Number == minNum);
+        var lastVerse = displayVerses.FirstOrDefault(v => v.Number == maxNum);
+
+        _segmentStartAudio = firstVerse?.AudioStart ?? 0;
+        _segmentEndAudio = lastVerse?.AudioEnd ?? 0;
+    }
+
+    private void TogglePlayback()
+    {
+        _isPlaying = !_isPlaying;
+        StateHasChanged();
+    }
+
+    private string? ResolveCurrentVerseId(decimal time)
+    {
+        if (_selectedVerseNumbers.Count == 0)
+            return null;
+
+        var verse = displayVerses.FirstOrDefault(v =>
+            _selectedVerseNumbers.Contains(v.Number) &&
+            time >= v.AudioStart &&
+            time <= v.AudioEnd);
+
+        if (verse != null)
+            return $"verse-{BookNumber}-{verse.Number}";
+
+        return null;
+    }
+
+    private void SaveSegment()
+    {
+        if (_selectedVerseNumbers.Count == 0)
+        {
+            Snackbar.Add("Select at least one verse to save a segment.", Severity.Warning);
+            return;
+        }
+
+        var min = _selectedVerseNumbers.Min();
+        var max = _selectedVerseNumbers.Max();
+        var newSegment = new Segment
+        {
+            VerseStart = min,
+            VerseEnd = max,
+            Verses = displayVerses
+                .Where(v => v.Number >= min && v.Number <= max)
+                .ToList()
+        };
+
+        Snackbar.Add($"Segment {min}-{max} saved (demo — persistence coming next commit).", Severity.Success);
+        NavManager.NavigateTo("..");
+    }
+
+    private string? query(string key)
+    {
+        var uri = new Uri(NavManager.Uri);
+        var q = System.Web.HttpUtility.ParseQueryString(uri.Query);
+        return q[key];
+    }
+
+    private void CancelEdit()
+    {
+        NavManager.NavigateTo("..");
+    }
+
+    private static int ParseInt(string? value)
+    {
+        if (int.TryParse(value, out var result))
+            return result;
+        return 0;
+    }
+}
