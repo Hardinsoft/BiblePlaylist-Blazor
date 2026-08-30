@@ -1,20 +1,24 @@
+using BiblePlaylist.Shared.Bible;
+using BiblePlaylist.Shared.Data;
+using BiblePlaylist.Shared.DTO;
+using BiblePlaylist.Shared.Playlist;
+using Blazored.LocalStorage;
 using Bunit;
-using Xunit;
 using Microsoft.Extensions.DependencyInjection;
-using MudBlazor.Services;
 using Microsoft.JSInterop;
 using Moq;
+using MudBlazor.Services;
+using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading.Tasks;
-using Newtonsoft.Json;
-using BiblePlaylist.Shared.Bible;
-using BiblePlaylist.Shared.DTO;
-using BiblePlaylist.Shared.Playlist;
-using BiblePlaylist.Shared.Data;
+using System.Net;
 using System.Net.Http;
+using System.Net.Http.Json;
+using System.Runtime.CompilerServices;
 using System.Text;
+using System.Threading.Tasks;
+using Xunit;
 
 namespace BiblePlaylist.Tests
 {
@@ -38,7 +42,7 @@ namespace BiblePlaylist.Tests
 
         private void SetupVersionResponse(int bookNumber, int chapterNumber, string audioUrl = "http://example.com/chapter.mp3")
         {
-            var version = new Version
+            var version = new Shared.Bible.Version
             {
                 Books = new List<Book>
                 {
