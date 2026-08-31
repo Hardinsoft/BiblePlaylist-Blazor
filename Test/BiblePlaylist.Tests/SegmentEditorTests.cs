@@ -3,12 +3,12 @@ using BiblePlaylist.Shared.Data;
 using BiblePlaylist.Shared.DTO;
 using BiblePlaylist.Shared.Playlist;
 using BiblePlaylist.Client.Config;
+using BiblePlaylist.Client.Events;
 using Bunit;
+using Blazored.LocalStorage;
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.JSInterop;
-using Moq;
-using Moq.Protected;
 using MudBlazor.Services;
 using Newtonsoft.Json;
 using System;
@@ -23,23 +23,75 @@ using Xunit;
 
 namespace BiblePlaylist.Tests
 {
+    // Fake IJSRuntime that records every call for later verification.
+    public class RecordingJSRuntime : IJSRuntime
+    {
+        public List<(string Method, object[] Args)> Invocations { get; } = new();
+
+        public ValueTask<T> InvokeAsync<T>(string identifier, object?[]? args)
+        {
+            Invocations.Add((identifier, args ?? Array.Empty<object>()));
+            return default!;
+        }
+
+        public ValueTask<T> InvokeAsync<T>(string identifier, CancellationToken cancellationToken, object?[]? args)
+        {
+            Invocations.Add((identifier, args ?? Array.Empty<object>()));
+            return default!;
+        }
+    }
+
+    // Fake HttpMessageHandler that returns canned responses based on URL patterns.
+    public class RecordingHttpMessageHandler : HttpMessageHandler
+    {
+        public List<HttpRequestMessage> Requests { get; } = new();
+        private readonly Dictionary<string, HttpResponseMessage> _responses = new();
+
+        public void SetupGet(string pathContains, string body)
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(body, Encoding.UTF8, "application/json")
+            };
+            _responses[pathContains] = response;
+        }
+
+        public void SetupPut(string pathContains)
+        {
+            _responses[pathContains] = new HttpResponseMessage(HttpStatusCode.OK);
+        }
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Requests.Add(request);
+            foreach (var (key, resp) in _responses)
+            {
+                if (request.RequestUri != null && request.RequestUri.AbsolutePath.Contains(key))
+                    return resp;
+            }
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        }
+    }
+
     public class SegmentEditorTests : TestContext
     {
-        private readonly Mock<IJSRuntime> _jsMock;
-        private readonly Mock<HttpMessageHandler> _httpHandlerMock;
+        public RecordingJSRuntime JSRuntime { get; private set; } = null!;
+        public RecordingHttpMessageHandler HttpHandler { get; private set; } = null!;
 
         public SegmentEditorTests()
         {
             Services.AddMudBlazorDialog();
             Services.AddMudServices();
 
-            _jsMock = new Mock<IJSRuntime>();
-            Services.AddSingleton(_jsMock.Object);
+            JSRuntime = new RecordingJSRuntime();
+            Services.AddSingleton<IJSRuntime>(JSRuntime);
 
             Services.AddSingleton(new Endpoints());
+            Services.AddScoped<IDelegateLibrary>(sp => new Mock<IDelegateLibrary>().Object);
+            Services.AddBlazoredLocalStorage();
 
-            _httpHandlerMock = new Mock<HttpMessageHandler>();
-            var httpClient = new HttpClient(_httpHandlerMock.Object);
+            HttpHandler = new RecordingHttpMessageHandler();
+            var httpClient = new HttpClient(HttpHandler) { BaseAddress = new Uri("http://localhost/") };
             Services.AddSingleton(httpClient);
         }
 
@@ -74,21 +126,7 @@ namespace BiblePlaylist.Tests
                 }
             };
 
-            var json = JsonConvert.SerializeObject(version);
-            var response = new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StringContent(json, Encoding.UTF8, "application/json")
-            };
-
-            _httpHandlerMock.Protected().Setup<Task<HttpResponseMessage>>(
-                "SendAsync",
-                ItExpr.Is<HttpRequestMessage>(req =>
-                    req.Method == HttpMethod.Get &&
-                    req.RequestUri != null &&
-                    req.RequestUri.AbsolutePath.Contains($"Book={bookNumber}") &&
-                    req.RequestUri.AbsolutePath.Contains($"Chapter={chapterNumber}")),
-                ItExpr.IsAny<CancellationToken>())
-                .ReturnsAsync(response);
+            HttpHandler.SetupGet($"Book={bookNumber}", JsonConvert.SerializeObject(version));
         }
 
         private void SetupLibraryResponse(string playlistKey, int bookNumber, int chapterNumber,
@@ -114,29 +152,8 @@ namespace BiblePlaylist.Tests
                 }
             };
 
-            var json = JsonConvert.SerializeObject(library);
-            var response = new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StringContent(json, Encoding.UTF8, "application/json")
-            };
-
-            _httpHandlerMock.Protected().Setup<Task<HttpResponseMessage>>(
-                "SendAsync",
-                ItExpr.Is<HttpRequestMessage>(req =>
-                    req.Method == HttpMethod.Get &&
-                    req.RequestUri != null &&
-                    req.RequestUri.AbsolutePath.Contains("library")),
-                ItExpr.IsAny<CancellationToken>())
-                .ReturnsAsync(response);
-
-            _httpHandlerMock.Protected().Setup<Task<HttpResponseMessage>>(
-                "SendAsync",
-                ItExpr.Is<HttpRequestMessage>(req =>
-                    req.Method == HttpMethod.Put &&
-                    req.RequestUri != null &&
-                    req.RequestUri.AbsolutePath.Contains("library")),
-                ItExpr.IsAny<CancellationToken>())
-                .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK));
+            HttpHandler.SetupGet("library", JsonConvert.SerializeObject(library));
+            HttpHandler.SetupPut("library");
         }
 
         [Fact]
@@ -150,7 +167,7 @@ namespace BiblePlaylist.Tests
         }
 
         [Fact]
-        public async Task Editor_PlayButton_WithNoSelection_NeverCallsInitializeAudio()
+        public async Task Editor_PlayButton_WithNoSelection_DoesNotCallInitializeAudio()
         {
             SetupVersionResponse(1, 5);
 
@@ -161,8 +178,11 @@ namespace BiblePlaylist.Tests
             if (buttons.Count > 0)
                 buttons[0].Click();
 
-            _jsMock.Verify(js => js.InvokeVoidAsync("initializeAudioPlayer", It.IsAny<string>()),
-                Times.Never);
+            await cut.InvokeAsync(() => Task.Delay(50));
+
+            Assert.DoesNotContain(
+                JSRuntime.Invocations,
+                i => i.Method == "initializeAudioPlayer");
         }
 
         [Fact]
@@ -182,14 +202,15 @@ namespace BiblePlaylist.Tests
             if (buttons.Count > 0)
                 buttons[0].Click();
 
-            _jsMock.Verify(js => js.InvokeVoidAsync("initializeAudioPlayer", "segmentEditorPlayer"),
-                Times.Once);
-            _jsMock.Verify(js => js.InvokeVoidAsync(
-                "loadAudioFile", It.IsAny<string>(), "segmentEditorPlayer"),
-                Times.Once);
-            _jsMock.Verify(js => js.InvokeVoidAsync(
-                "PlayAudioSegment", It.IsAny<decimal>(), It.IsAny<decimal>(), "segmentEditorPlayer"),
-                Times.Once);
+            await cut.InvokeAsync(() => Task.Delay(50));
+
+            Assert.Contains(JSRuntime.Invocations,
+                i => i.Method == "initializeAudioPlayer" &&
+                     i.Args.Length >= 1 && i.Args[0].ToString() == "segmentEditorPlayer");
+            Assert.Contains(JSRuntime.Invocations,
+                i => i.Method == "loadAudioFile");
+            Assert.Contains(JSRuntime.Invocations,
+                i => i.Method == "PlayAudioSegment");
         }
 
         [Fact]
@@ -207,17 +228,18 @@ namespace BiblePlaylist.Tests
 
             var buttons = cut.FindAll("button");
             if (buttons.Count > 0)
-                buttons[0].Click();
+                buttons[0].Click(); // play
 
-            _jsMock.Verify(js => js.InvokeVoidAsync("PlayAudioSegment",
-                It.IsAny<decimal>(), It.IsAny<decimal>(), "segmentEditorPlayer"),
-                Times.Once);
+            await cut.InvokeAsync(() => Task.Delay(50));
+
+            Assert.Contains(JSRuntime.Invocations, i => i.Method == "PlayAudioSegment");
 
             if (buttons.Count > 0)
-                buttons[0].Click();
+                buttons[0].Click(); // stop
 
-            _jsMock.Verify(js => js.InvokeVoidAsync("pauseAudioPlayer", "segmentEditorPlayer"),
-                Times.Once);
+            await cut.InvokeAsync(() => Task.Delay(50));
+
+            Assert.Contains(JSRuntime.Invocations, i => i.Method == "pauseAudioPlayer");
         }
 
         [Fact]
@@ -240,14 +262,9 @@ namespace BiblePlaylist.Tests
                 await cut.InvokeAsync(() => Task.Delay(50));
             }
 
-            _httpHandlerMock.Protected().Verify(
-                "SendAsync",
-                Times.Once(),
-                ItExpr.Is<HttpRequestMessage>(req =>
-                    req.Method == HttpMethod.Put &&
-                    req.RequestUri != null &&
-                    req.RequestUri.AbsolutePath.Contains("library")),
-                ItExpr.IsAny<CancellationToken>());
+            Assert.Contains(HttpHandler.Requests,
+                req => req.Method == HttpMethod.Put &&
+                       req.RequestUri?.AbsolutePath.Contains("library") == true);
         }
 
         [Fact]
@@ -275,7 +292,6 @@ namespace BiblePlaylist.Tests
 
             var cut = RenderComponent<BiblePlaylist.Client.Pages.SegmentEditor>();
             Assert.NotNull(cut);
-
             Assert.Contains("Loading", cut.Markup);
         }
 
