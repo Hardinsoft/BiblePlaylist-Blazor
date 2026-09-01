@@ -22,7 +22,7 @@ steps:
 - task: DotNetCoreCLI@2
   inputs:
     command: 'test'
-    projects: 'BiblePlaylist/Server/BiblePlaylist.Server.csproj'
+    projects: 'Test/BiblePlaylist.Tests/BiblePlaylist.Tests.csproj'
     arguments: '--configuration $(buildConfiguration) --no-restore'
   displayName: 'dotnet test'
 
