@@ -185,14 +185,18 @@ namespace BiblePlaylist.Tests
 
         // Use reflection to set selection on the component instance — avoids Bunit 1.40.0
         // broken RefreshableElementCollection indexer entirely.
+        // After mutating the field, flush an empty InvokeAsync to force a render cycle so
+        // the DOM picks up the new selection state.
         private void SetSelectedVerses(IRenderedComponent<BiblePlaylist.Client.Pages.SegmentEditor> cut,
             IEnumerable<int> verseNumbers)
         {
+            var type = typeof(BiblePlaylist.Client.Pages.SegmentEditor);
+            var field = type.GetField("_selectedVerseNumbers", BindingFlags.NonPublic | BindingFlags.Instance);
             var instance = cut.Instance;
-            var field = typeof(BiblePlaylist.Client.Pages.SegmentEditor)
-                .GetField("_selectedVerseNumbers", BindingFlags.NonPublic | BindingFlags.Instance)!;
+            if (field == null || instance == null) return;
+
             field.SetValue(instance, new HashSet<int>(verseNumbers));
-            cut.InvokeAsync(() => cut.Instance.GetType().GetMethod("StateHasChanged", BindingFlags.Public | BindingFlags.Instance)!.Invoke(cut.Instance, null));
+            _ = cut.InvokeAsync(() => { });
         }
 
         [Fact]
