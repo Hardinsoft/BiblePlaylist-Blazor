@@ -20,6 +20,13 @@ steps:
   displayName: 'dotnet build'
 
 - task: DotNetCoreCLI@2
+  inputs:
+    command: 'test'
+    projects: 'BiblePlaylist/Server/BiblePlaylist.Server.csproj'
+    arguments: '--configuration $(buildConfiguration) --no-restore'
+  displayName: 'dotnet test'
+
+- task: DotNetCoreCLI@2
   displayName: 'dotnet publish (Server only)'
   inputs:
     command: 'publish'
