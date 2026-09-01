@@ -16,6 +16,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Reflection;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -24,7 +25,6 @@ using Moq;
 
 namespace BiblePlaylist.Tests
 {
-    // Fake IJSRuntime that records every call for later verification.
     public class RecordingJSRuntime : IJSRuntime
     {
         public List<(string Method, object[] Args)> Invocations { get; } = new();
@@ -42,34 +42,42 @@ namespace BiblePlaylist.Tests
         }
     }
 
-    // Fake HttpMessageHandler that returns canned responses based on URL patterns.
     public class RecordingHttpMessageHandler : HttpMessageHandler
     {
         public List<HttpRequestMessage> Requests { get; } = new();
-        private readonly Dictionary<string, HttpResponseMessage> _responses = new();
+        private readonly Dictionary<string, HttpResponseMessage> _getResponses = new();
+        private readonly Dictionary<string, HttpResponseMessage> _putResponses = new();
 
-        public void SetupGet(string pathContains, string body)
+        public void SetupGet(string uriContains, string body)
         {
             var response = new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new StringContent(body, Encoding.UTF8, "application/json")
             };
-            _responses[pathContains] = response;
+            _getResponses[uriContains] = response;
         }
 
-        public void SetupPut(string pathContains)
+        public void SetupPut(string uriContains)
         {
-            _responses[pathContains] = new HttpResponseMessage(HttpStatusCode.OK);
+            _putResponses[uriContains] = new HttpResponseMessage(HttpStatusCode.OK);
         }
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             Requests.Add(request);
-            foreach (var (key, resp) in _responses)
+            var uri = request.RequestUri?.AbsoluteUri ?? "";
+
+            if (request.Method == HttpMethod.Get)
             {
-                if (request.RequestUri != null && request.RequestUri.AbsolutePath.Contains(key))
-                    return resp;
+                foreach (var (key, resp) in _getResponses)
+                    if (uri.Contains(key)) return resp;
             }
+            else if (request.Method == HttpMethod.Put)
+            {
+                foreach (var (key, resp) in _putResponses)
+                    if (uri.Contains(key)) return resp;
+            }
+
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         }
     }
@@ -153,31 +161,62 @@ namespace BiblePlaylist.Tests
                 }
             };
 
-            HttpHandler.SetupGet("library", JsonConvert.SerializeObject(library));
+            HttpHandler.SetupGet($"library?key={playlistKey}", JsonConvert.SerializeObject(library));
             HttpHandler.SetupPut("library");
+        }
+
+        private IRenderedComponent<BiblePlaylist.Client.Pages.SegmentEditor> RenderEditor(int book, int chapter,
+            string playlist = null, int? segmentStart = null, int? segmentEnd = null)
+        {
+            var ps = new List<ComponentParameter>
+            {
+                ComponentParameter.CreateParameter("Book", book),
+                ComponentParameter.CreateParameter("Chapter", chapter)
+            };
+            if (playlist != null)
+                ps.Add(ComponentParameter.CreateParameter("Playlist", playlist));
+            if (segmentStart.HasValue && segmentEnd.HasValue)
+            {
+                ps.Add(ComponentParameter.CreateParameter("SegmentStart", segmentStart.Value));
+                ps.Add(ComponentParameter.CreateParameter("SegmentEnd", segmentEnd.Value));
+            }
+            return RenderComponent<BiblePlaylist.Client.Pages.SegmentEditor>(ps.ToArray());
+        }
+
+        // Use reflection to set selection on the component instance — avoids Bunit 1.40.0
+        // broken RefreshableElementCollection indexer entirely.
+        private void SetSelectedVerses(IRenderedComponent<BiblePlaylist.Client.Pages.SegmentEditor> cut,
+            IEnumerable<int> verseNumbers)
+        {
+            var instance = cut.Instance;
+            var field = typeof(BiblePlaylist.Client.Pages.SegmentEditor)
+                .GetField("_selectedVerseNumbers", BindingFlags.NonPublic | BindingFlags.Instance)!;
+            field.SetValue(instance, new HashSet<int>(verseNumbers));
+            cut.InvokeAsync(() => cut.Instance.GetType().GetMethod("StateHasChanged", BindingFlags.Public | BindingFlags.Instance)!.Invoke(cut.Instance, null));
         }
 
         [Fact]
         public void Editor_Renders_WithoutCrashing()
         {
             SetupVersionResponse(1, 5);
-
-            var cut = RenderComponent<BiblePlaylist.Client.Pages.SegmentEditor>();
+            var cut = RenderEditor(1, 5);
             Assert.NotNull(cut);
-            Assert.Contains("Loading", cut.Markup);
+            Assert.Contains("Verse 1 text.", cut.Markup);
         }
 
         [Fact]
         public async Task Editor_PlayButton_WithNoSelection_DoesNotCallInitializeAudio()
         {
             SetupVersionResponse(1, 5);
-
-            var cut = RenderComponent<BiblePlaylist.Client.Pages.SegmentEditor>();
+            var cut = RenderEditor(1, 5);
             await cut.InvokeAsync(() => Task.Delay(50));
 
-            var buttons = cut.FindAll("button");
-            if (buttons.Count > 0)
-                buttons[0].Click();
+            await cut.InvokeAsync(() =>
+            {
+                var firstButton = cut.Find("button");
+                if (firstButton != null)
+                    firstButton.Click();
+            });
 
             await cut.InvokeAsync(() => Task.Delay(50));
 
@@ -192,16 +231,18 @@ namespace BiblePlaylist.Tests
             SetupVersionResponse(1, 5);
             SetupLibraryResponse("test-playlist", 1, 5);
 
-            var cut = RenderComponent<BiblePlaylist.Client.Pages.SegmentEditor>();
+            var cut = RenderEditor(1, 5, "test-playlist");
             await cut.InvokeAsync(() => Task.Delay(50));
 
-            var verseElements = cut.FindAll("div.d-flex.align-start");
-            for (int i = 0; i < verseElements.Count; i++)
-                verseElements[i].Click();
+            // Set selection via reflection — selects all 5 verses
+            SetSelectedVerses(cut, new[] { 1, 2, 3, 4, 5 });
 
-            var buttons = cut.FindAll("button");
-            if (buttons.Count > 0)
-                buttons[0].Click();
+            await cut.InvokeAsync(() =>
+            {
+                var playButton = cut.Find("button");
+                if (playButton != null)
+                    playButton.Click();
+            });
 
             await cut.InvokeAsync(() => Task.Delay(50));
 
@@ -220,23 +261,29 @@ namespace BiblePlaylist.Tests
             SetupVersionResponse(1, 5);
             SetupLibraryResponse("test-playlist", 1, 5);
 
-            var cut = RenderComponent<BiblePlaylist.Client.Pages.SegmentEditor>();
+            var cut = RenderEditor(1, 5, "test-playlist");
             await cut.InvokeAsync(() => Task.Delay(50));
 
-            var verseElements = cut.FindAll("div.d-flex.align-start");
-            for (int i = 0; i < verseElements.Count; i++)
-                verseElements[i].Click();
+            // Select all 5 verses via reflection
+            SetSelectedVerses(cut, new[] { 1, 2, 3, 4, 5 });
 
-            var buttons = cut.FindAll("button");
-            if (buttons.Count > 0)
-                buttons[0].Click(); // play
+            await cut.InvokeAsync(() =>
+            {
+                var playButton = cut.Find("button");
+                if (playButton != null)
+                    playButton.Click();
+            });
 
             await cut.InvokeAsync(() => Task.Delay(50));
 
             Assert.Contains(JSRuntime.Invocations, i => i.Method == "PlayAudioSegment");
 
-            if (buttons.Count > 0)
-                buttons[0].Click(); // stop
+            await cut.InvokeAsync(() =>
+            {
+                var playButton = cut.Find("button");
+                if (playButton != null)
+                    playButton.Click();
+            });
 
             await cut.InvokeAsync(() => Task.Delay(50));
 
@@ -249,23 +296,24 @@ namespace BiblePlaylist.Tests
             SetupVersionResponse(1, 5);
             SetupLibraryResponse("test-playlist", 1, 5);
 
-            var cut = RenderComponent<BiblePlaylist.Client.Pages.SegmentEditor>();
+            var cut = RenderEditor(1, 5, "test-playlist");
             await cut.InvokeAsync(() => Task.Delay(50));
 
-            var verseElements = cut.FindAll("div.d-flex.align-start");
-            for (int i = 0; i < 3 && i < verseElements.Count; i++)
-                verseElements[i].Click();
+            // Select first 3 verses via reflection
+            SetSelectedVerses(cut, new[] { 1, 2, 3 });
 
-            var buttons = cut.FindAll("button");
-            if (buttons.Count >= 3)
+            await cut.InvokeAsync(() =>
             {
-                buttons[2].Click();
-                await cut.InvokeAsync(() => Task.Delay(50));
-            }
+                var saveButton = cut.FindAll("button").LastOrDefault(b => b.TextContent.Contains("Save"));
+                if (saveButton != null)
+                    saveButton.Click();
+            });
+
+            await cut.InvokeAsync(() => Task.Delay(50));
 
             Assert.Contains(HttpHandler.Requests,
                 req => req.Method == HttpMethod.Put &&
-                       req.RequestUri?.AbsolutePath.Contains("library") == true);
+                       req.RequestUri?.AbsoluteUri.Contains("library") == true);
         }
 
         [Fact]
@@ -273,15 +321,17 @@ namespace BiblePlaylist.Tests
         {
             SetupVersionResponse(1, 5);
 
-            var cut = RenderComponent<BiblePlaylist.Client.Pages.SegmentEditor>();
+            var cut = RenderEditor(1, 5);
             await cut.InvokeAsync(() => Task.Delay(50));
 
-            var buttons = cut.FindAll("button");
-            if (buttons.Count >= 2)
+            await cut.InvokeAsync(() =>
             {
-                buttons[1].Click();
-                await cut.InvokeAsync(() => Task.Delay(50));
-            }
+                var cancelButton = cut.FindAll("button").LastOrDefault(b => b.TextContent.Contains("Cancel"));
+                if (cancelButton != null)
+                    cancelButton.Click();
+            });
+
+            await cut.InvokeAsync(() => Task.Delay(50));
 
             Assert.NotNull(cut);
         }
@@ -290,10 +340,9 @@ namespace BiblePlaylist.Tests
         public void Editor_CreateMode_RendersInfoAlert()
         {
             SetupVersionResponse(1, 5);
-
-            var cut = RenderComponent<BiblePlaylist.Client.Pages.SegmentEditor>();
+            var cut = RenderEditor(1, 5);
             Assert.NotNull(cut);
-            Assert.Contains("Loading", cut.Markup);
+            Assert.Contains("Select verses to create a new segment", cut.Markup);
         }
 
         [Fact]
@@ -314,10 +363,14 @@ namespace BiblePlaylist.Tests
             SetupVersionResponse(1, 5);
             SetupLibraryResponse("test-playlist", 1, 5, new List<Segment> { existingSegment });
 
-            var cut = RenderComponent<BiblePlaylist.Client.Pages.SegmentEditor>();
+            var cut = RenderEditor(1, 5, "test-playlist", 2, 4);
             await cut.InvokeAsync(() => Task.Delay(50));
 
             Assert.NotNull(cut);
+            Assert.Contains("2-4 (3 verses)", cut.Markup);
+            Assert.Contains("Verse 2 text.", cut.Markup);
+            Assert.Contains("Verse 3 text.", cut.Markup);
+            Assert.Contains("Verse 4 text.", cut.Markup);
         }
 
         [Fact]
@@ -326,10 +379,11 @@ namespace BiblePlaylist.Tests
             SetupVersionResponse(1, 5);
             SetupLibraryResponse("test-playlist", 1, 5, new List<Segment>());
 
-            var cut = RenderComponent<BiblePlaylist.Client.Pages.SegmentEditor>();
+            var cut = RenderEditor(1, 5, "test-playlist", 2, 4);
             await cut.InvokeAsync(() => Task.Delay(50));
 
             Assert.NotNull(cut);
+            Assert.Contains("Select verses to create a new segment", cut.Markup);
         }
     }
 }
