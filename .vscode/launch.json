@@ -10,7 +10,7 @@
       "cwd": "${workspaceFolder}/BiblePlaylist/Server",
       "env": {
         "ASPNETCORE_ENVIRONMENT": "Development",
-        "ASPNETCORE_URLS": "https://localhost:5107", // ← match your actual port
+        "ASPNETCORE_URLS": "http://localhost:5108", // ← match your actual port
         "DOTNET_LAUNCH_PROFILE": "BiblePlaylist.Server"
       }
     },
@@ -20,9 +20,9 @@
       "request": "attach",
       "browser": "edge",
       "timeout": 120000,
-      "url": "https://localhost:5107",
+      "url": "http://localhost:5108",
       "webRoot": "${workspaceFolder}/BiblePlaylist/Client/wwwroot",
-      "inspectUri": "{wsProtocol}://localhost:5107/_framework/debug/ws-proxy?browser={browserInspectUri}"
+      "inspectUri": "{wsProtocol}://localhost:5108/_framework/debug/ws-proxy?browser={browserInspectUri}"
     }
   ],
   "compounds": [
