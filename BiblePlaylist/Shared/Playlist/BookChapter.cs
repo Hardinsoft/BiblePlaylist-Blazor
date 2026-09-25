@@ -16,11 +16,21 @@ namespace BiblePlaylist.Shared.Playlist
         private string _voiceText;
 
         public string VersionCode { get; set; }
-                
+
+        [JsonIgnore]
         public Book Book { get; set; }
-        public int BookNumber { get; set; }        
+        public int BookNumber { get; set; }
+
+        [JsonIgnore]
+        public string BookName { get; set; }
+
+        [JsonIgnore]
         public Chapter Chapter { get; set; }
         public int ChapterNumber { get; set; }
+
+        [JsonIgnore]
+        public string ChapterAudioUrl { get; set; }
+
         public IList<Segment> Segments { get; set; }
         [JsonIgnore]
         public string Display
@@ -41,7 +51,7 @@ namespace BiblePlaylist.Shared.Playlist
             if (_display != null)
                 return _display;
 
-            string bookName = Book?.Name ?? $"Book {BookNumber}";
+            string bookName = BookName ?? Book?.Name ?? $"Book {BookNumber}";
             string chapterStr = ChapterNumber.ToString();
 
             if (Segments == null || !Segments.Any())
@@ -67,7 +77,7 @@ namespace BiblePlaylist.Shared.Playlist
             if (_voiceText != null)
                 return _voiceText;
 
-            string bookName = Book?.Name ?? $"Book {BookNumber}";
+            string bookName = BookName ?? Book?.Name ?? $"Book {BookNumber}";
             return $"{bookName} chapter {ChapterNumber.NumberToText()}";
         }
         public BookChapter() { }

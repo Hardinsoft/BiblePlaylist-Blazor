@@ -535,7 +535,7 @@
             SelectedChapter = chapter.ChapterNumber
         };
 
-        chapterText = $"{chapter.Book?.Name} {chapter.ChapterNumber}:{segment.VerseStart}-{segment.VerseEnd}";
+        chapterText = $"{chapter.BookName} {chapter.ChapterNumber}:{segment.VerseStart}-{segment.VerseEnd}";
 
         // Force the UI (header text) to update right now, before TTS starts
         await InvokeAsync(() =>
@@ -572,7 +572,7 @@
         }        
 
         // Only after narration completes (and we were not cancelled) do we switch the actual audio source
-        chapterAudio = $"{endpoints.Audio}{chapter.Chapter?.AudioUrl}";
+        chapterAudio = $"{endpoints.Audio}{chapter.ChapterAudioUrl}";
 
         OnHasPlayedChanged(true); // Mark HasPlayed as true after TTS completes        
         SetLoadingTrack(false);
