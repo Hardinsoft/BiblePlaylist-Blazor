@@ -389,5 +389,125 @@ namespace BiblePlaylist.Tests
             Assert.NotNull(cut);
             Assert.Contains("Select verses to create a new segment", cut.Markup);
         }
+
+        /// <summary>
+        /// The server's SaveEntityAsync uses Newtonsoft.Json.JsonConvert.SerializeObject.
+        /// Segment.Verses must be ignored by Newtonsoft so verse data (Html, AudioStart,
+        /// AudioEnd) is never persisted to the library JSON file.
+        /// </summary>
+        [Fact]
+        public void Segment_Verses_NotSerialized_ByNewtonsoft()
+        {
+            var segment = new Segment
+            {
+                VerseStart = 1,
+                VerseEnd = 9,
+                Verses = new List<Verse>
+                {
+                    new Verse { Number = 1, Html = "In the beginning...", AudioStart = 0, AudioEnd = 10.5m },
+                    new Verse { Number = 2, Html = "The same word...", AudioStart = 10.5m, AudioEnd = 20.0m }
+                }
+            };
+
+            string json = JsonConvert.SerializeObject(segment);
+
+            Assert.DoesNotContain("Verses", json);
+            Assert.DoesNotContain("In the beginning", json);
+            Assert.Contains("VerseStart", json);
+            Assert.Contains("VerseEnd", json);
+        }
+
+        /// <summary>
+        /// A Library containing segments with populated Verses (as happens after
+        /// the /playlist/inflate endpoint enriches chapters at runtime) must not
+        /// have that verse data in the JSON when saved via the server's Newtonsoft
+        /// serializer. This is the core of the drag-drop-save bug: previously all
+        /// verse text and audio timing leaked into library_greg_hardin_live_com.json.
+        /// </summary>
+        [Fact]
+        public void Library_Serialization_Excludes_Verses()
+        {
+            var library = new Library
+            {
+                Code = "test-lib",
+                Playlists = new List<Playlist>
+                {
+                    new Playlist
+                    {
+                        Key = "test-key",
+                        Name = "Test Playlist",
+                        BookChapters = new List<BookChapter>
+                        {
+                            new BookChapter
+                            {
+                                BookNumber = 43,
+                                ChapterNumber = 1,
+                                Segments = new List<Segment>
+                                {
+                                    new Segment
+                                    {
+                                        VerseStart = 1,
+                                        VerseEnd = 9,
+                                        Verses = new List<Verse>
+                                        {
+                                            new Verse { Number = 1, Html = "Gzipped verse text", AudioStart = 0, AudioEnd = 10 }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            };
+
+            string json = JsonConvert.SerializeObject(library);
+
+            Assert.DoesNotContain("Verses", json);
+            Assert.DoesNotContain("Gzipped verse text", json);
+            Assert.Contains("VerseStart", json);
+            Assert.Contains("VerseEnd", json);
+        }
+
+        /// <summary>
+        /// When a segment is edited and saved via SegmentEditor, the PUT request
+        /// body sent to the server must not contain verse data. The PersistSegmentAsync
+        /// method strips Verses client-side before serializing the library.
+        /// </summary>
+        [Fact]
+        public async Task Editor_SaveSegment_PUTBody_DoesNotContain_Verses()
+        {
+            SetupVersionResponse(1, 5);
+            SetupLibraryResponse("test-playlist", 1, 5);
+            HttpHandler.SetupPut("library");
+
+            var cut = RenderEditor(1, 5, "test-playlist");
+            await cut.InvokeAsync(() => Task.Delay(50));
+
+            // Select first 3 verses and save
+            SetSelectedVerses(cut, new[] { 1, 2, 3 });
+
+            await cut.InvokeAsync(() =>
+            {
+                var saveButton = cut.FindAll("button").LastOrDefault(b => b.TextContent.Contains("Save"));
+                saveButton?.Click();
+            });
+
+            await cut.InvokeAsync(() => Task.Delay(50));
+
+            var putRequest = HttpHandler.Requests.FirstOrDefault(req =>
+                req.Method == HttpMethod.Put &&
+                req.RequestUri?.AbsoluteUri.Contains("library") == true);
+
+            Assert.NotNull(putRequest);
+
+            var putBody = await putRequest.Content.ReadAsStringAsync();
+            // Verses may appear as null (client uses System.Text.Json which doesn't
+            // see Newtonsoft's [JsonIgnore]), but the key requirement is NO verse DATA:
+            Assert.DoesNotContain("[{\"number\"", putBody);   // no verse array
+            Assert.DoesNotContain("Verse 1 text", putBody);   // no verse text
+            Assert.DoesNotContain("audioStart", putBody);     // no audio timing
+            Assert.Contains("verseStart", putBody);           // segment range preserved
+            Assert.Contains("verseEnd", putBody);
+        }
     }
 }

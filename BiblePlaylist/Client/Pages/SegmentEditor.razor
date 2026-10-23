@@ -212,10 +212,15 @@
             if (segment != null)
             {
                 Mode = SegmentMode.Edit;
-                foreach (var v in segment.Verses)
+                // Verses list is not persisted in the library JSON (marked [JsonIgnore]);
+                // derive the selection from VerseStart/VerseEnd + the chapter verses loaded earlier.
+                var matchingVerses = displayVerses
+                    .Where(v => v.Number >= segment.VerseStart && v.Number <= segment.VerseEnd)
+                    .ToList();
+                foreach (var v in matchingVerses)
                     _selectedVerseNumbers.Add(v.Number);
-                _segmentStartAudio = segment.Verses?.FirstOrDefault()?.AudioStart ?? 0;
-                _segmentEndAudio = segment.Verses?.LastOrDefault()?.AudioEnd ?? 0;
+                _segmentStartAudio = matchingVerses.FirstOrDefault()?.AudioStart ?? 0;
+                _segmentEndAudio = matchingVerses.LastOrDefault()?.AudioEnd ?? 0;
             }
             else
             {
@@ -324,10 +329,7 @@
         var newSegment = new Segment
         {
             VerseStart = min,
-            VerseEnd = max,
-            Verses = displayVerses
-                .Where(v => v.Number >= min && v.Number <= max)
-                .ToList()
+            VerseEnd = max
         };
 
         await PersistSegmentAsync(newSegment);
@@ -397,6 +399,25 @@
                 if (bookChapter.Segments == null)
                     bookChapter.Segments = new List<Segment>();
                 bookChapter.Segments.Add(segment);
+            }
+
+            // Strip runtime-only verse data before saving to prevent the library
+            // JSON from being bloated with verse text and audio timing data.
+            // Verses are re-fetched at runtime via the /playlist/inflate endpoint.
+            if (library.Playlists != null)
+            {
+                foreach (var pl in library.Playlists)
+                {
+                    if (pl.BookChapters == null) continue;
+                    foreach (var bc in pl.BookChapters)
+                    {
+                        if (bc.Segments == null) continue;
+                        foreach (var seg in bc.Segments)
+                        {
+                            seg.Verses = null;
+                        }
+                    }
+                }
             }
 
             var response = await Http.PutAsJsonAsync("library", library);

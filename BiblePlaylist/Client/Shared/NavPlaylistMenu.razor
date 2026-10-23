@@ -504,6 +504,24 @@
 
         try
         {
+            // Strip runtime-only verse data (Html, AudioStart, AudioEnd) before sending
+            // to the server. The server's Newtonsoft serializer also respects [JsonIgnore]
+            // on Verses, but stripping client-side keeps the HTTP payload lean and
+            // prevents verses from ever reaching the persisted JSON.
+            // Verses are re-fetched at runtime via the /playlist/inflate endpoint.
+            foreach (var playlist in Library.Playlists ?? new List<Playlist>())
+            {
+                if (playlist.BookChapters == null) continue;
+                foreach (var bc in playlist.BookChapters)
+                {
+                    if (bc.Segments == null) continue;
+                    foreach (var seg in bc.Segments)
+                    {
+                        seg.Verses = null;
+                    }
+                }
+            }
+
             var response = await Http.PutAsJsonAsync("library", Library);
             if (!response.IsSuccessStatusCode)
             {
