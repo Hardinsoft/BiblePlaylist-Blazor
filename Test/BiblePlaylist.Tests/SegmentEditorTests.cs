@@ -470,8 +470,10 @@ namespace BiblePlaylist.Tests
 
         /// <summary>
         /// When a segment is edited and saved via SegmentEditor, the PUT request
-        /// body sent to the server must not contain verse data. The PersistSegmentAsync
-        /// method strips Verses client-side before serializing the library.
+        /// body sent to the server must not contain verse data. Server-side
+        /// Newtonsoft [JsonIgnore] on Segment.Verses strips verse data from the
+        /// persisted JSON file; the library loaded from the GET endpoint also
+        /// excludes Verses via the server's Newtonsoft round-trip.
         /// </summary>
         [Fact]
         public async Task Editor_SaveSegment_PUTBody_DoesNotContain_Verses()

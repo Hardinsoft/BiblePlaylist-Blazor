@@ -401,25 +401,10 @@
                 bookChapter.Segments.Add(segment);
             }
 
-            // Strip runtime-only verse data before saving to prevent the library
-            // JSON from being bloated with verse text and audio timing data.
-            // Verses are re-fetched at runtime via the /playlist/inflate endpoint.
-            if (library.Playlists != null)
-            {
-                foreach (var pl in library.Playlists)
-                {
-                    if (pl.BookChapters == null) continue;
-                    foreach (var bc in pl.BookChapters)
-                    {
-                        if (bc.Segments == null) continue;
-                        foreach (var seg in bc.Segments)
-                        {
-                            seg.Verses = null;
-                        }
-                    }
-                }
-            }
-
+            // Verses are stripped server-side by Newtonsoft's [JsonIgnore] on
+            // Segment.Verses (SaveEntityAsync). No client-side stripping needed;
+            // the library here is a fresh deserialized copy from the GET endpoint
+            // which already excludes Verses via the server's Newtonsoft round-trip.
             var response = await Http.PutAsJsonAsync("library", library);
             if (!response.IsSuccessStatusCode)
             {

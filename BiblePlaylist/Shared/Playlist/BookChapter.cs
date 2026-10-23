@@ -21,14 +21,12 @@ namespace BiblePlaylist.Shared.Playlist
         public Book Book { get; set; }
         public int BookNumber { get; set; }
 
-        [JsonIgnore]
         public string BookName { get; set; }
 
         [JsonIgnore]
         public Chapter Chapter { get; set; }
         public int ChapterNumber { get; set; }
 
-        [JsonIgnore]
         public string ChapterAudioUrl { get; set; }
 
         public IList<Segment> Segments { get; set; }

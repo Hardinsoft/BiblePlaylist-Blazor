@@ -504,24 +504,10 @@
 
         try
         {
-            // Strip runtime-only verse data (Html, AudioStart, AudioEnd) before sending
-            // to the server. The server's Newtonsoft serializer also respects [JsonIgnore]
-            // on Verses, but stripping client-side keeps the HTTP payload lean and
-            // prevents verses from ever reaching the persisted JSON.
-            // Verses are re-fetched at runtime via the /playlist/inflate endpoint.
-            foreach (var playlist in Library.Playlists ?? new List<Playlist>())
-            {
-                if (playlist.BookChapters == null) continue;
-                foreach (var bc in playlist.BookChapters)
-                {
-                    if (bc.Segments == null) continue;
-                    foreach (var seg in bc.Segments)
-                    {
-                        seg.Verses = null;
-                    }
-                }
-            }
-
+            // Verses are stripped server-side by Newtonsoft's [JsonIgnore] on
+            // Segment.Verses (SaveEntityAsync). We must NOT null out Verses here
+            // because the in-memory Library is shared with _playlistSegments and
+            // the AudioPlayer — nulling Verses would immediately break segment playback.
             var response = await Http.PutAsJsonAsync("library", Library);
             if (!response.IsSuccessStatusCode)
             {
@@ -674,7 +660,7 @@
         if (selectedBook != null)
         {
             chapterText = $"{selectedBook.Name} {SelectedBookChapter.SelectedChapter}";
-            chapterAudio = $"{endpoints.Audio}{bookChapter.Chapter?.AudioUrl}";
+            chapterAudio = $"{endpoints.Audio}{bookChapter.ChapterAudioUrl}";
         }
 
         // Clear segment tracking when manually selecting a full chapter

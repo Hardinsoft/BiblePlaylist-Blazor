@@ -12,7 +12,9 @@
       "BookChapters": [
         {
           "BookNumber": 43,
+          "BookName": "John",
           "ChapterNumber": 1,
+          "ChapterAudioUrl": "43-John-01.mp3",
           "VersionCode": "NET",
           "Display": "John 1:1-9",
           "VoiceText": "John chapter 1",
@@ -26,7 +28,9 @@
         },
         {
           "BookNumber": 42,
+          "BookName": "Luke",
           "ChapterNumber": 1,
+          "ChapterAudioUrl": "42-Luke-01.mp3",
           "VersionCode": "NET",
           "Display": "Luke 1:26-47",
           "VoiceText": "Luke chapter 1",
@@ -40,7 +44,9 @@
         },
         {
           "BookNumber": 40,
+          "BookName": "Matthew",
           "ChapterNumber": 1,
+          "ChapterAudioUrl": "40-Matthew-01.mp3",
           "VersionCode": "NET",
           "Display": "Matthew 1:17-25",
           "VoiceText": "Matthew chapter 1",
@@ -54,7 +60,9 @@
         },
         {
           "BookNumber": 42,
+          "BookName": "Luke",
           "ChapterNumber": 2,
+          "ChapterAudioUrl": "42-Luke-02.mp3",
           "VersionCode": "NET",
           "Display": "Luke 2:1-39",
           "VoiceText": "Luke chapter 2",
@@ -68,7 +76,9 @@
         },
         {
           "BookNumber": 40,
+          "BookName": "Matthew",
           "ChapterNumber": 2,
+          "ChapterAudioUrl": "40-Matthew-02.mp3",
           "VersionCode": "NET",
           "Display": "Matthew 2:1-15",
           "VoiceText": "Matthew chapter 2",
