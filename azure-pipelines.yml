@@ -8,16 +8,23 @@ steps:
 - task: DotNetCoreCLI@2
   inputs:
     command: 'restore'
-    projects: 'BiblePlaylist/Server/BiblePlaylist.Server.csproj'
+    projects: '**/*.csproj'
     arguments: '--configuration $(buildConfiguration)'
   displayName: 'dotnet restore'
 
 - task: DotNetCoreCLI@2
   inputs:
     command: 'build'
-    projects: 'BiblePlaylist/Server/BiblePlaylist.Server.csproj'
+    projects: '**/*.csproj'
     arguments: '--configuration $(buildConfiguration) --no-restore'
   displayName: 'dotnet build'
+
+- task: DotNetCoreCLI@2
+  inputs:
+    command: 'test'
+    projects: 'Test/BiblePlaylist.Tests/BiblePlaylist.Tests.csproj'
+    arguments: '--configuration $(buildConfiguration) --no-restore'
+  displayName: 'dotnet test'
 
 - task: DotNetCoreCLI@2
   displayName: 'dotnet publish (Server only)'
