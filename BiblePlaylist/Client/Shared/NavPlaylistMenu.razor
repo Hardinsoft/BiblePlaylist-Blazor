@@ -735,7 +735,8 @@
     private void NavigateToEdit(BookChapter chapter, Segment segment)
     {
         var playlistKey = GetPlaylistKey();
-        var query = $"book={chapter.BookNumber}&chapter={chapter.ChapterNumber}&playlist={System.Net.WebUtility.UrlEncode(playlistKey)}&segmentStart={segment.VerseStart}&segmentEnd={segment.VerseEnd}";
+        var libraryCode = Library?.Code ?? string.Empty;
+        var query = $"library={System.Net.WebUtility.UrlEncode(libraryCode)}&book={chapter.BookNumber}&chapter={chapter.ChapterNumber}&playlist={System.Net.WebUtility.UrlEncode(playlistKey)}&segmentStart={segment.VerseStart}&segmentEnd={segment.VerseEnd}";
         NavManager.NavigateTo($"/edit-segment?{query}");
     }
 

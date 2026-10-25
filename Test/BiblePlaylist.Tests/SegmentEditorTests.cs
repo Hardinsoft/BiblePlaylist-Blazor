@@ -139,10 +139,11 @@ namespace BiblePlaylist.Tests
         }
 
         private void SetupLibraryResponse(string playlistKey, int bookNumber, int chapterNumber,
-            List<Segment>? segments = null)
+            List<Segment>? segments = null, string libraryCode = "test-library")
         {
             var library = new Library
             {
+                Code = libraryCode,
                 Playlists = new List<Playlist>
                 {
                     new Playlist
@@ -161,12 +162,12 @@ namespace BiblePlaylist.Tests
                 }
             };
 
-            HttpHandler.SetupGet($"library?key={playlistKey}", JsonConvert.SerializeObject(library));
+            HttpHandler.SetupGet($"library?key={libraryCode}", JsonConvert.SerializeObject(library));
             HttpHandler.SetupPut("library");
         }
 
         private IRenderedComponent<BiblePlaylist.Client.Pages.SegmentEditor> RenderEditor(int book, int chapter,
-            string playlist = null, int? segmentStart = null, int? segmentEnd = null)
+            string playlist = null, int? segmentStart = null, int? segmentEnd = null, string libraryCode = "test-library")
         {
             var ps = new List<ComponentParameter>
             {
@@ -174,7 +175,10 @@ namespace BiblePlaylist.Tests
                 ComponentParameter.CreateParameter("Chapter", chapter)
             };
             if (playlist != null)
+            {
                 ps.Add(ComponentParameter.CreateParameter("Playlist", playlist));
+                ps.Add(ComponentParameter.CreateParameter("LibraryCode", libraryCode));
+            }
             if (segmentStart.HasValue && segmentEnd.HasValue)
             {
                 ps.Add(ComponentParameter.CreateParameter("SegmentStart", segmentStart.Value));
@@ -252,11 +256,15 @@ namespace BiblePlaylist.Tests
 
             Assert.Contains(JSRuntime.Invocations,
                 i => i.Method == "initializeAudioPlayer" &&
-                     i.Args.Length >= 1 && i.Args[0].ToString() == "segmentEditorPlayer");
+                     i.Args.Length >= 1 && i.Args[0].ToString() == "segmentEditorAudioPlayer");
             Assert.Contains(JSRuntime.Invocations,
-                i => i.Method == "loadAudioFile");
+                i => i.Method == "loadAudioFile" &&
+                     i.Args.Length >= 2 && i.Args[0].ToString() == "segmentEditorAudioPlayer" &&
+                     i.Args[1].ToString() == "segmentEditorAudioPlayerSource");
             Assert.Contains(JSRuntime.Invocations,
-                i => i.Method == "PlayAudioSegment");
+                i => i.Method == "PlayAudioSegment" &&
+                     i.Args.Length >= 2 && i.Args[0].ToString() == "segmentEditorAudioPlayer" &&
+                     i.Args[1].ToString() == "segmentEditorAudioPlayerSource");
         }
 
         [Fact]

@@ -49,6 +49,13 @@
             <MudButton Variant="Variant.Text" Color="Color.Secondary" OnClick="CancelEdit">Cancel</MudButton>
         </MudStack>
 
+        @if (playlistLoadFailed)
+        {
+            <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="mb-3">
+                Could not load playlist. Check the playlist link and try again.
+            </MudAlert>
+        }
+
         @if (Mode == SegmentMode.Create && _selectedVerseNumbers.Count == 0)
         {
             <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="mb-3">
@@ -109,6 +116,7 @@
 
     private bool isInitialized;
     private bool chapterLoaded;
+    private bool playlistLoadFailed;
     private string chapterReference;
     private List<Verse> displayVerses = new();
     private HashSet<int> _selectedVerseNumbers = new();
@@ -119,6 +127,7 @@
     [Parameter] [SupplyParameterFromQuery] public int Book { get; set; }
     [Parameter] [SupplyParameterFromQuery] public int Chapter { get; set; }
     [Parameter] [SupplyParameterFromQuery] public string? Playlist { get; set; }
+    [Parameter] [SupplyParameterFromQuery(Name = "library")] public string? LibraryCode { get; set; }
     [Parameter] [SupplyParameterFromQuery] public int SegmentStart { get; set; }
     [Parameter] [SupplyParameterFromQuery] public int SegmentEnd { get; set; }
 
@@ -126,6 +135,7 @@
     private decimal _segmentEndAudio;
     private string _chapterAudioUrl;
     private System.Timers.Timer? _playbackTimer;
+    private DotNetObjectReference<SegmentEditor>? _dotNetRef;
 
     protected override async Task OnInitializedAsync()
     {
@@ -192,9 +202,11 @@
             return;
         }
 
+        playlistLoadFailed = false;
+
         try
         {
-            var libResponse = await Http.GetStringAsync($"library?key={Playlist}");
+            var libResponse = await Http.GetStringAsync($"library?key={LibraryCode}");
             var library = Newtonsoft.Json.JsonConvert.DeserializeObject<BiblePlaylist.Shared.Data.Library>(libResponse);
             if (library == null) return;
 
@@ -230,7 +242,7 @@
         catch (Exception ex)
         {
             logger.LogError(ex, "Error loading playlist segment");
-            Mode = SegmentMode.Create;
+            playlistLoadFailed = true;
         }
     }
 
@@ -284,16 +296,17 @@
 
         if (_isPlaying)
         {
-            await JSRuntime.InvokeVoidAsync("pauseAudioPlayer", "segmentEditorPlayer");
+            await JSRuntime.InvokeVoidAsync("pauseAudioPlayer", "segmentEditorAudioPlayer");
             StopPlaybackTimer();
             _isPlaying = false;
             _currentPlayingVerseId = null;
         }
         else
         {
-            await JSRuntime.InvokeVoidAsync("initializeAudioPlayer", "segmentEditorPlayer");
-            await JSRuntime.InvokeVoidAsync("loadAudioFile", _chapterAudioUrl, "segmentEditorPlayer");
-            await JSRuntime.InvokeVoidAsync("PlayAudioSegment", _segmentStartAudio, _segmentEndAudio, "segmentEditorPlayer");
+            _dotNetRef ??= DotNetObjectReference.Create(this);
+            await JSRuntime.InvokeVoidAsync("initializeAudioPlayer", "segmentEditorAudioPlayer", _dotNetRef);
+            await JSRuntime.InvokeVoidAsync("loadAudioFile", "segmentEditorAudioPlayer", "segmentEditorAudioPlayerSource", _chapterAudioUrl);
+            await JSRuntime.InvokeVoidAsync("PlayAudioSegment", "segmentEditorAudioPlayer", "segmentEditorAudioPlayerSource", _chapterAudioUrl, _segmentStartAudio, _segmentEndAudio);
             StartPlaybackTimer();
             _isPlaying = true;
         }
@@ -343,9 +356,15 @@
             return;
         }
 
+        if (string.IsNullOrEmpty(LibraryCode))
+        {
+            Snackbar.Add("Cannot save: library code is missing.", Severity.Error);
+            return;
+        }
+
         try
         {
-            var libResponse = await Http.GetStringAsync($"library?key={Playlist}");
+            var libResponse = await Http.GetStringAsync($"library?key={LibraryCode}");
             var library = Newtonsoft.Json.JsonConvert.DeserializeObject<BiblePlaylist.Shared.Data.Library>(libResponse);
             if (library == null)
             {
@@ -436,7 +455,7 @@
         {
             try
             {
-                var time = await JSRuntime.InvokeAsync<double>("GetAudioCurrentTime", "segmentEditorPlayer");
+                var time = await JSRuntime.InvokeAsync<double>("GetAudioCurrentTime", "segmentEditorAudioPlayer");
                 var verseId = ResolveCurrentVerseId((decimal)time);
                 if (verseId != null && verseId != _currentPlayingVerseId)
                 {
@@ -460,5 +479,6 @@
     public void Dispose()
     {
         StopPlaybackTimer();
+        _dotNetRef?.Dispose();
     }
 }
