@@ -504,8 +504,9 @@
 
         try
         {
-            // Verses are stripped server-side by Newtonsoft's [JsonIgnore] on
-            // Segment.Verses (SaveEntityAsync). We must NOT null out Verses here
+            // Verses are stripped on serialization by both JSON stacks' [JsonIgnore]
+            // on Segment.Verses — System.Text.Json on this PutAsJsonAsync PUT, and
+            // Newtonsoft server-side (SaveEntityAsync). We must NOT null out Verses here
             // because the in-memory Library is shared with _playlistSegments and
             // the AudioPlayer — nulling Verses would immediately break segment playback.
             var response = await Http.PutAsJsonAsync("library", Library);
