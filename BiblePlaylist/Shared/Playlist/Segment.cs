@@ -19,6 +19,8 @@ namespace BiblePlaylist.Shared.Playlist
             get => BuildVoiceText();
             set => _voiceText = value;
         }
+        [JsonIgnore]
+        [Newtonsoft.Json.JsonIgnore]
         public IList<Verse> Verses { get; set; }
         public int VerseStart { get; set; }
         public int VerseEnd {  get; set; }

@@ -35,9 +35,18 @@ namespace BiblePlaylist.Server.Data
             var cachedObject = _cache.Get<T>(Cache.GetVersionCacheKey(key));
             if (cachedObject == null)
             {
-                var json = await File.ReadAllTextAsync($"{Directory.GetCurrentDirectory()}/Storage/{key}.json");
-                cachedObject = JsonConvert.DeserializeObject<T>(json);
-                _cache.Set(Cache.GetVersionCacheKey(key), cachedObject, Cache.OneYear);
+                try
+                {
+                    var json = await File.ReadAllTextAsync($"{Directory.GetCurrentDirectory()}/Storage/{key}.json");
+                    cachedObject = JsonConvert.DeserializeObject<T>(json);
+                    _cache.Set(Cache.GetVersionCacheKey(key), cachedObject, Cache.OneYear);
+                }
+                catch (FileNotFoundException)
+                {
+                    // No stored file for this key: let callers (e.g. LibraryController,
+                    // which returns NotFound on null) handle the miss instead of a 500.
+                    return default(T);
+                }
             }
             //else
            // {
