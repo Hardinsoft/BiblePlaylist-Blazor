@@ -5,6 +5,7 @@
 @using BiblePlaylist.Shared.Bible
 @using BiblePlaylist.Shared.DTO
 @using BiblePlaylist.Shared.Playlist
+@using BiblePlaylist.Shared.ExtensionMethods
 @using Microsoft.AspNetCore.Components
 @using Microsoft.Extensions.Logging
 @using MudBlazor
@@ -65,7 +66,7 @@
         else
         {
             <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="mb-3">
-                Segment: @(ShowSegmentRange())
+                Segment: @(ShowSegmentRange()) · Segment time: @(FormatTime(SegmentDurationSeconds)) · Chapter length: @(FormatTime(ChapterTotalSeconds))
             </MudAlert>
         }
 
@@ -89,7 +90,7 @@
 
             <MudPaper Class="pa-2 mb-2"
                       Style="@verseStyle">
-                <div class="d-flex align-start" @onclick="() => ToggleVerse(verseNumber)">
+                <div class="d-flex align-start" @onclick="() => ToggleVerseAsync(verseNumber)">
                     <MudText Typo="Typo.body1" Class="mr-3 font-weight-medium">@verseNumber</MudText>
                     <div class="flex-grow-1 @(isPlaying ? "playing-verse" : "")">
                         @(new MarkupString(verse.Html))
@@ -134,6 +135,7 @@
     private decimal _segmentStartAudio;
     private decimal _segmentEndAudio;
     private string _chapterAudioUrl;
+    private string _bookName = "";
     private System.Timers.Timer? _playbackTimer;
     private DotNetObjectReference<SegmentEditor>? _dotNetRef;
 
@@ -176,9 +178,13 @@
             }
 
             displayVerses = chapterObj.Verses?.ToList() ?? new List<Verse>();
-            _chapterAudioUrl = chapterObj.AudioUrl ?? "";
+            var rawAudioUrl = chapterObj.AudioUrl ?? "";
+            _chapterAudioUrl = rawAudioUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || rawAudioUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+                ? rawAudioUrl
+                : $"{endpoints.Audio}{rawAudioUrl}";
 
             chapterReference = $"{version.Books.FirstOrDefault(b => b.Number == Book)?.Name} {Chapter}";
+            _bookName = version.Books.FirstOrDefault(b => b.Number == Book)?.Name ?? "";
 
             if (Mode == SegmentMode.Edit)
             {
@@ -256,14 +262,37 @@
         return $"{min}-{max} ({_selectedVerseNumbers.Count} verses)";
     }
 
-    private void ToggleVerse(int verseNumber)
+    private async Task ToggleVerseAsync(int verseNumber)
     {
-        if (_selectedVerseNumbers.Contains(verseNumber))
+        var wasPlaying = _isPlaying;
+        var wasSelected = _selectedVerseNumbers.Contains(verseNumber);
+        if (wasSelected)
             _selectedVerseNumbers.Remove(verseNumber);
         else
             _selectedVerseNumbers.Add(verseNumber);
 
         RecomputeSegmentRange();
+
+        if (wasPlaying)
+        {
+            if (_selectedVerseNumbers.Count == 0)
+            {
+                await StopPlaybackAsync();
+            }
+            else if (!wasSelected)
+            {
+                // Added while playing: start playing the newly selected verse.
+                var verse = displayVerses.FirstOrDefault(v => v.Number == verseNumber);
+                var start = verse?.AudioStart ?? _segmentStartAudio;
+                await StartSegmentAudioAsync(start, _segmentEndAudio, speakTts: false);
+            }
+            else
+            {
+                // Removed while playing: keep playing the updated range from its start.
+                await StartSegmentAudioAsync(_segmentStartAudio, _segmentEndAudio, speakTts: false);
+            }
+        }
+
         StateHasChanged();
     }
 
@@ -296,21 +325,82 @@
 
         if (_isPlaying)
         {
-            await JSRuntime.InvokeVoidAsync("pauseAudioPlayer", "segmentEditorAudioPlayer");
-            StopPlaybackTimer();
-            _isPlaying = false;
-            _currentPlayingVerseId = null;
+            await StopPlaybackAsync();
         }
         else
         {
-            _dotNetRef ??= DotNetObjectReference.Create(this);
-            await JSRuntime.InvokeVoidAsync("initializeAudioPlayer", "segmentEditorAudioPlayer", _dotNetRef);
-            await JSRuntime.InvokeVoidAsync("loadAudioFile", "segmentEditorAudioPlayer", "segmentEditorAudioPlayerSource", _chapterAudioUrl);
-            await JSRuntime.InvokeVoidAsync("PlayAudioSegment", "segmentEditorAudioPlayer", "segmentEditorAudioPlayerSource", _chapterAudioUrl, _segmentStartAudio, _segmentEndAudio);
-            StartPlaybackTimer();
-            _isPlaying = true;
+            await StartSegmentAudioAsync(_segmentStartAudio, _segmentEndAudio, speakTts: true);
         }
         StateHasChanged();
+    }
+
+    private async Task StopPlaybackAsync()
+    {
+        await JSRuntime.InvokeVoidAsync("pauseAudioPlayer", "segmentEditorAudioPlayer");
+        StopPlaybackTimer();
+        _isPlaying = false;
+        _currentPlayingVerseId = null;
+    }
+
+    private async Task StartSegmentAudioAsync(decimal start, decimal end, bool speakTts)
+    {
+        if (string.IsNullOrWhiteSpace(_chapterAudioUrl))
+        {
+            Snackbar.Add("Chapter audio is not available.", Severity.Warning);
+            return;
+        }
+
+        _isPlaying = true;
+        StateHasChanged();
+
+        if (speakTts)
+        {
+            // TTS preview of what will be heard live: chapter voice text + segment voice text,
+            // as playlist playback does. Not re-spoken on seeks while already playing.
+            var texts = new List<string>();
+            if (!string.IsNullOrWhiteSpace(_bookName))
+                texts.Add($"{_bookName} chapter {Chapter.NumberToText()}");
+            if (_selectedVerseNumbers.Count > 0)
+            {
+                var min = _selectedVerseNumbers.Min();
+                var max = _selectedVerseNumbers.Max();
+                texts.Add(new Segment { VerseStart = min, VerseEnd = max }.VoiceText);
+            }
+            if (texts.Count > 0)
+                await JSRuntime.InvokeVoidAsync("speakSequenceAsync", texts);
+            // The user may have pressed Stop during TTS; pauseAudioPlayer cancels speech.
+            if (!_isPlaying)
+                return;
+        }
+
+        _dotNetRef ??= DotNetObjectReference.Create(this);
+        await JSRuntime.InvokeVoidAsync("initializeAudioPlayer", "segmentEditorAudioPlayer", _dotNetRef);
+        await JSRuntime.InvokeVoidAsync("loadAudioFile", "segmentEditorAudioPlayer", "segmentEditorAudioPlayerSource", _chapterAudioUrl);
+        await JSRuntime.InvokeVoidAsync("PlayAudioSegment", "segmentEditorAudioPlayer", "segmentEditorAudioPlayerSource", _chapterAudioUrl, start, end);
+        StartPlaybackTimer();
+        _isPlaying = true;
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public async Task OnAudioEnded()
+    {
+        StopPlaybackTimer();
+        _isPlaying = false;
+        _currentPlayingVerseId = null;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private decimal ChapterTotalSeconds => displayVerses.Count == 0 ? 0 : displayVerses.Max(v => v.AudioEnd);
+
+    private decimal SegmentDurationSeconds => _selectedVerseNumbers.Count == 0 ? 0 : Math.Max(0, _segmentEndAudio - _segmentStartAudio);
+
+    private static string FormatTime(decimal seconds)
+    {
+        if (seconds < 0)
+            seconds = 0;
+        var total = (int)Math.Floor(seconds);
+        return $"{total / 60}:{total % 60:D2}";
     }
 
     private string? ResolveCurrentVerseId(decimal time)
@@ -433,7 +523,7 @@
             }
 
             Snackbar.Add($"Segment {segment.VerseStart}-{segment.VerseEnd} saved.", Severity.Success);
-            NavManager.NavigateTo("..");
+            NavManager.NavigateTo(BuildReturnUrl(segment.VerseStart, segment.VerseEnd));
         }
         catch (Exception ex)
         {
@@ -444,7 +534,18 @@
 
     private void CancelEdit()
     {
-        NavManager.NavigateTo("..");
+        NavManager.NavigateTo(BuildReturnUrl(SegmentStart, SegmentEnd));
+    }
+
+    private string BuildReturnUrl(int segmentStart, int segmentEnd)
+    {
+        // No playlist supplied (e.g. Create with no playlist open): plain playlist list.
+        if (string.IsNullOrEmpty(Playlist))
+            return "/playlists";
+        var query = $"playlist={System.Net.WebUtility.UrlEncode(Playlist)}&library={System.Net.WebUtility.UrlEncode(LibraryCode ?? string.Empty)}&book={Book}&chapter={Chapter}";
+        if (segmentStart > 0 && segmentEnd > 0)
+            query += $"&segmentStart={segmentStart}&segmentEnd={segmentEnd}";
+        return $"/playlists?{query}";
     }
 
     private void StartPlaybackTimer()

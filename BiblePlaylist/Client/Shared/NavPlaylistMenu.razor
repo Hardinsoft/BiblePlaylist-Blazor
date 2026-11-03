@@ -246,6 +246,10 @@
     // === SEGMENT PLAYBACK SUPPORT ===
     private List<(BookChapter Chapter, Segment Segment)> _playlistSegments = new();
     private int _currentSegmentIndex = -1;
+    private BookChapter? _expandedChapter;
+    private Segment? _returnTargetSegment;
+    private bool _returnHandled;
+    private bool _returnAutoplayStarted;
     private decimal _currentPlaybackTime;
     private System.Timers.Timer? _playbackTimer;
     private string _currentPlayingVerseId;
@@ -268,7 +272,7 @@
 
     private bool IsCurrentChapter(BookChapter chapter)
     {
-        return CurrentSegment.HasValue && CurrentSegment.Value.Chapter == chapter;
+        return (CurrentSegment.HasValue && CurrentSegment.Value.Chapter == chapter) || _expandedChapter == chapter;
     }
 
     private void StartPlaybackTimer()
@@ -376,9 +380,81 @@
         Repeat = userSettings.Repeat;
         _enableTts = userSettings.EnableTts;
 
+        await HandleReturnNavigationAsync();
+
         await base.OnParametersSetAsync();
 
 
+    }
+
+    private async Task HandleReturnNavigationAsync()
+    {
+        if (_returnHandled)
+            return;
+        _returnHandled = true;
+
+        var playlistKey = GetQueryValue("playlist");
+        if (string.IsNullOrEmpty(playlistKey))
+            return;
+
+        var playlist = Library?.Playlists?.FirstOrDefault(p => p.Key == playlistKey);
+        if (playlist == null)
+            return;
+
+        selectedPlaylist = playlist;
+
+        var bookChaptersResponse = await Http.PostAsJsonAsync<IList<BookChapter>>("playlist/inflate?key=NET", selectedPlaylist.BookChapters);
+        List<BookChapter> inflatedBookChapters = new List<BookChapter>();
+
+        if (bookChaptersResponse.IsSuccessStatusCode)
+            inflatedBookChapters = await bookChaptersResponse.Content.ReadFromJsonAsync<List<BookChapter>>() ?? new List<BookChapter>();
+
+        selectedPlaylist.BookChapters.Clear();
+        inflatedBookChapters.ForEach(bc => selectedPlaylist.BookChapters.Add(bc));
+
+        RebuildPlaylistSegments();
+        hideChapters = false;
+
+        int.TryParse(GetQueryValue("book"), out int bookNumber);
+        int.TryParse(GetQueryValue("chapter"), out int chapterNumber);
+        _expandedChapter = selectedPlaylist.BookChapters?.FirstOrDefault(bc => bc.BookNumber == bookNumber && bc.ChapterNumber == chapterNumber);
+
+        _returnTargetSegment = null;
+        if (_expandedChapter != null
+            && int.TryParse(GetQueryValue("segmentStart"), out int segmentStart)
+            && int.TryParse(GetQueryValue("segmentEnd"), out int segmentEnd)
+            && segmentStart > 0 && segmentEnd > 0)
+        {
+            _returnTargetSegment = _expandedChapter.Segments?.FirstOrDefault(s => s.VerseStart == segmentStart && s.VerseEnd == segmentEnd);
+        }
+
+        _currentSegmentIndex = -1;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private string? GetQueryValue(string name)
+    {
+        var query = new Uri(NavManager.Uri).Query;
+        if (string.IsNullOrEmpty(query))
+            return null;
+        foreach (var part in query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var kv = part.Split('=', 2);
+            if (kv.Length == 2 && kv[0] == name)
+                return System.Net.WebUtility.UrlDecode(kv[1]);
+        }
+        return null;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && Autoplay && _returnTargetSegment != null && !_returnAutoplayStarted && audioPlayer != null)
+        {
+            _returnAutoplayStarted = true;
+            _currentSegmentIndex = _playlistSegments.FindIndex(s => s.Segment == _returnTargetSegment);
+            if (_currentSegmentIndex >= 0)
+                await PlayCurrentSegment();
+        }
     }
 
     protected override async Task OnInitializedAsync()
@@ -414,6 +490,8 @@
         // cannot resume after its speakSequenceAsync await completes.
         await CancelPlaybackAsync();
 
+        _expandedChapter = null;
+        _returnTargetSegment = null;
         selectedPlaylist = playlist;
 
         var bookChaptersResponse = await Http.PostAsJsonAsync<IList<BookChapter>>("playlist/inflate?key=NET", selectedPlaylist.BookChapters);
@@ -522,7 +600,9 @@
 
     private async Task PlayCurrentSegment()
     {
-        if (CurrentSegment == null || audioPlayer == null) return;        
+        if (CurrentSegment == null || audioPlayer == null) return;
+
+        _expandedChapter = null;
 
         // Pause any currently playing audio / cancel speech
         await audioPlayer.PauseAsync();
@@ -605,6 +685,7 @@
         // Cancel any previous in-flight play before starting the new segment
         await CancelPlaybackAsync();
 
+        _expandedChapter = null;
         _currentSegmentIndex = _playlistSegments.FindIndex(s => s.Segment == segment);
         await PlayCurrentSegment();
     }
