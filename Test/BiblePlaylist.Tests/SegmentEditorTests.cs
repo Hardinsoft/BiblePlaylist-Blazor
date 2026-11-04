@@ -47,6 +47,7 @@ namespace BiblePlaylist.Tests
         public List<HttpRequestMessage> Requests { get; } = new();
         private readonly Dictionary<string, HttpResponseMessage> _getResponses = new();
         private readonly Dictionary<string, HttpResponseMessage> _putResponses = new();
+        private readonly Dictionary<string, HttpResponseMessage> _postResponses = new();
 
         public void SetupGet(string uriContains, string body)
         {
@@ -62,6 +63,15 @@ namespace BiblePlaylist.Tests
             _putResponses[uriContains] = new HttpResponseMessage(HttpStatusCode.OK);
         }
 
+        public void SetupPost(string uriContains, string body)
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(body, Encoding.UTF8, "application/json")
+            };
+            _postResponses[uriContains] = response;
+        }
+
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             Requests.Add(request);
@@ -75,6 +85,11 @@ namespace BiblePlaylist.Tests
             else if (request.Method == HttpMethod.Put)
             {
                 foreach (var (key, resp) in _putResponses)
+                    if (uri.Contains(key)) return resp;
+            }
+            else if (request.Method == HttpMethod.Post)
+            {
+                foreach (var (key, resp) in _postResponses)
                     if (uri.Contains(key)) return resp;
             }
 
