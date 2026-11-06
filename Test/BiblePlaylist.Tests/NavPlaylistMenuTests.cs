@@ -30,7 +30,7 @@ namespace BiblePlaylist.Tests
     /// so the pending return segment is the second segment (verses 3-4) of
     /// John chapter 1, and the other segment is verses 1-2.
     /// </summary>
-    public class NavPlaylistMenuTests : TestContext
+    public class NavPlaylistMenuTests : Bunit.TestContext
     {
         public RecordingJSRuntime JSRuntime { get; private set; } = null!;
         public RecordingHttpMessageHandler HttpHandler { get; private set; } = null!;

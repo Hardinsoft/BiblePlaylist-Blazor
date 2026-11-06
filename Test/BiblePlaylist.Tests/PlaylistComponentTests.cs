@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 
 namespace BiblePlaylist.Tests
 {
-    public class PlaylistComponentTests : TestContext
+    public class PlaylistComponentTests : Bunit.TestContext
     {
         public PlaylistComponentTests()
         {
