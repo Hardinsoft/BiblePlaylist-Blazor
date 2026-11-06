@@ -23,8 +23,19 @@ steps:
   inputs:
     command: 'test'
     projects: 'Test/BiblePlaylist.Tests/BiblePlaylist.Tests.csproj'
-    arguments: '--configuration $(buildConfiguration) --no-restore'
+    # MTP mode: the task must NOT append '--logger trx' (VSTest option, rejected
+    # by the test app with exit code 5). publishTestResults: false stops it;
+    # '--report-trx' is the MTP equivalent, provided by the
+    # Microsoft.Testing.Extensions.TrxReport package in the test project.
+    publishTestResults: false
+    arguments: '--configuration $(buildConfiguration) --no-restore --report-trx --results-directory $(Agent.TempDirectory)'
   displayName: 'dotnet test'
+
+- task: PublishTestResults@2
+  inputs:
+    testRunner: VSTest
+    testResultsFiles: '$(Agent.TempDirectory)/**/*.trx'
+  displayName: 'Publish test results'
 
 - task: DotNetCoreCLI@2
   displayName: 'dotnet publish (Server only)'
