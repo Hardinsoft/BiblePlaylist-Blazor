@@ -5,6 +5,7 @@
 @using BiblePlaylist.Shared.DTO
 @using BiblePlaylist.Shared.Data
 @using BiblePlaylist.Shared.Playlist
+@using Microsoft.AspNetCore.Components
 @using Microsoft.Extensions.Logging
 @inject HttpClient Http
 @inject Blazored.LocalStorage.ILocalStorageService localStorage
@@ -12,6 +13,8 @@
 @inject ILogger<NavBibleMenu> logger
 @inject IDelegateLibrary delegateLibrary
 @inject Endpoints endpoints
+@inject NavigationManager NavManager
+@inject ISnackbar Snackbar
 
 <MudGrid Class="sticky-top mud-elevation-4 stick-to-menu-bottom" hidden="@(hideChapters)" Spacing="2">
     <MudItem xs="12">
@@ -104,31 +107,48 @@
                                                             @* Verses are display-only / playable — not draggable *@
                                                             @foreach (var segment in context.Segments)
                                                             {
+                                                                @* #31: single-click on a segment must NOT start playback (it only
+                                                                   seeks within the already-playing segment, via the verse rows
+                                                                   below). Playback of another segment starts on double-click /
+                                                                   double-tap, handled by JumpToSegmentOnDoubleClick. *@
                                                                 <MudPaper Class="@($"pa-2 mb-2 {(IsCurrentSegment(context, segment) ? "current-segment mud-elevation-1" : "")}")"
                                                                           Style="border-radius: 4px; cursor: pointer;"
-                                                                          @onclick="@(() => PlaySpecificSegment(context, segment))">
-                                                                    <div class="verse-container">
-                                                                        @foreach (var verse in segment.Verses)
-                                                                        {
-                                                                            bool isPlayingVerse = IsCurrentSegment(context, segment) &&
-                                                                                _currentPlaybackTime >= verse.AudioStart &&
-                                                                                _currentPlaybackTime <= verse.AudioEnd;
+                                                                          @ondblclick="@(() => JumpToSegmentOnDoubleClick(context, segment))">
+                                                                    <div class="d-flex justify-content-between verse-container">
+                                                                        <div class="verse-list">
+                                                                            @foreach (var verse in segment.Verses)
+                                                                            {
+                                                                                bool isPlayingVerse = IsCurrentSegment(context, segment) &&
+                                                                                    _currentPlaybackTime >= verse.AudioStart &&
+                                                                                    _currentPlaybackTime <= verse.AudioEnd;
 
-                                                                            var verseId = $"verse-{context.ChapterNumber}-{segment.VerseStart}-{verse.Number}";
+                                                                                var verseId = $"verse-{context.ChapterNumber}-{segment.VerseStart}-{verse.Number}";
 
-                                                                            <div id="@verseId" @onclick:stopPropagation="true"
-                                                                                 @onclick="@(e => PlaySpecificVerse(context, segment, verse))"
-                                                                                 class="d-flex align-start mb-2"
-                                                                                 style="@(isPlayingVerse ? "background-color: rgba(var(--mud-palette-primary-rgb), 0.12); border-radius: 4px; padding-left: 8px; margin-left: -4px;" : "")">
-                                                                                <MudText Typo="Typo.body1"
-                                                                                         Class="verse-number mr-4 font-weight-medium">
-                                                                                    @verse.Number
-                                                                                </MudText>
-                                                                                <div class="flex-grow-1 verse-text" style="font-size: 1.05rem; line-height: 1.55;">
-                                                                                    @((MarkupString)verse.Html)
+                                                                                <div id="@verseId" @onclick:stopPropagation="true"
+                                                                                     @onclick="@(e => PlaySpecificVerse(context, segment, verse))"
+                                                                                     @ondblclick:stopPropagation="true"
+                                                                                     @ondblclick="@(() => JumpToSegmentOnDoubleClick(context, segment))"
+                                                                                     class="d-flex align-start mb-2"
+                                                                                     style="@(isPlayingVerse ? "background-color: rgba(var(--mud-palette-primary-rgb), 0.12); border-radius: 4px; padding-left: 8px; margin-left: -4px;" : "")">
+                                                                                    <MudText Typo="Typo.body1"
+                                                                                             Class="verse-number mr-4 font-weight-medium">
+                                                                                        @verse.Number
+                                                                                    </MudText>
+                                                                                    <div class="flex-grow-1 verse-text" style="font-size: 1.05rem; line-height: 1.55;">
+                                                                                        @((MarkupString)verse.Html)
+                                                                                    </div>
                                                                                 </div>
-                                                                            </div>
-                                                                        }
+                                                                            }
+                                                                        </div>
+                                                                        <MudMenu Icon="@Icons.Material.Filled.MoreVert"
+                                                                                 AriaLabel="Segment options"
+                                                                                 @onclick:stopPropagation="true">
+                                                                            <MudMenuItem Label="Edit segment"
+                                                                                         @onclick="() => NavigateToEdit(context, segment)" />
+                                                                            <MudMenuItem Label="Delete segment"
+                                                                                         Color="Color.Error"
+                                                                                         @onclick="() => DeleteSegment(context, segment)" />
+                                                                        </MudMenu>
                                                                     </div>
                                                                 </MudPaper>
                                                             }
@@ -232,6 +252,15 @@
     // === SEGMENT PLAYBACK SUPPORT ===
     private List<(BookChapter Chapter, Segment Segment)> _playlistSegments = new();
     private int _currentSegmentIndex = -1;
+    private BookChapter? _expandedChapter;
+    private Segment? _returnTargetSegment;
+    private bool _returnHandled;
+    // #30: index in _playlistSegments of the segment returned to from the
+    // segment editor, waiting for the user's first Play / forward /
+    // double-click. It is NOT the current segment: the return state stays
+    // paused with nothing highlighted until the user starts it, so
+    // IsCurrentSegment must not treat it as playing.
+    private int _pendingSegmentIndex = -1;
     private decimal _currentPlaybackTime;
     private System.Timers.Timer? _playbackTimer;
     private string _currentPlayingVerseId;
@@ -254,7 +283,7 @@
 
     private bool IsCurrentChapter(BookChapter chapter)
     {
-        return CurrentSegment.HasValue && CurrentSegment.Value.Chapter == chapter;
+        return (CurrentSegment.HasValue && CurrentSegment.Value.Chapter == chapter) || _expandedChapter == chapter;
     }
 
     private void StartPlaybackTimer()
@@ -362,11 +391,89 @@
         Repeat = userSettings.Repeat;
         _enableTts = userSettings.EnableTts;
 
+        await HandleReturnNavigationAsync();
+
         await base.OnParametersSetAsync();
 
 
     }
 
+    private async Task HandleReturnNavigationAsync()
+    {
+        if (_returnHandled)
+            return;
+        _returnHandled = true;
+
+        var playlistKey = GetQueryValue("playlist");
+        if (string.IsNullOrEmpty(playlistKey))
+            return;
+
+        var playlist = Library?.Playlists?.FirstOrDefault(p => p.Key == playlistKey);
+        if (playlist == null)
+            return;
+
+        selectedPlaylist = playlist;
+
+        var bookChaptersResponse = await Http.PostAsJsonAsync<IList<BookChapter>>("playlist/inflate?key=NET", selectedPlaylist.BookChapters);
+        List<BookChapter> inflatedBookChapters = new List<BookChapter>();
+
+        if (bookChaptersResponse.IsSuccessStatusCode)
+            inflatedBookChapters = await bookChaptersResponse.Content.ReadFromJsonAsync<List<BookChapter>>() ?? new List<BookChapter>();
+
+        selectedPlaylist.BookChapters.Clear();
+        inflatedBookChapters.ForEach(bc => selectedPlaylist.BookChapters.Add(bc));
+
+        RebuildPlaylistSegments();
+        hideChapters = false;
+
+        int.TryParse(GetQueryValue("book"), out int bookNumber);
+        int.TryParse(GetQueryValue("chapter"), out int chapterNumber);
+        _expandedChapter = selectedPlaylist.BookChapters?.FirstOrDefault(bc => bc.BookNumber == bookNumber && bc.ChapterNumber == chapterNumber);
+
+        _returnTargetSegment = null;
+        if (_expandedChapter != null
+            && int.TryParse(GetQueryValue("segmentStart"), out int segmentStart)
+            && int.TryParse(GetQueryValue("segmentEnd"), out int segmentEnd)
+            && segmentStart > 0 && segmentEnd > 0)
+        {
+            _returnTargetSegment = _expandedChapter.Segments?.FirstOrDefault(s => s.VerseStart == segmentStart && s.VerseEnd == segmentEnd);
+        }
+
+        _currentSegmentIndex = -1;
+        // #30: remember the returned segment as pending playback, not as the
+        // current segment. Play / forward / double-click start it (see
+        // PlayCurrentSegment and GoToNextSegment); until then the player
+        // stays paused with nothing highlighted, as #29 specified.
+        // Fallback if the URL range no longer matches a segment: the first
+        // segment of the expanded chapter, not the first segment of the
+        // playlist.
+        _pendingSegmentIndex = _returnTargetSegment != null
+            ? _playlistSegments.FindIndex(s => s.Segment == _returnTargetSegment)
+            : -1;
+        if (_pendingSegmentIndex < 0 && _expandedChapter != null)
+            _pendingSegmentIndex = _playlistSegments.FindIndex(s => s.Chapter == _expandedChapter);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private string? GetQueryValue(string name)
+    {
+        var query = new Uri(NavManager.Uri).Query;
+        if (string.IsNullOrEmpty(query))
+            return null;
+        foreach (var part in query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var kv = part.Split('=', 2);
+            if (kv.Length == 2 && kv[0] == name)
+                return System.Net.WebUtility.UrlDecode(kv[1]);
+        }
+        return null;
+    }
+
+    // #30: deliberately no OnAfterRender autoplay for the return target.
+    // Browsers require a user gesture before audio, and autoplaying on page
+    // load is bad form, so the return always waits for Play, forward, or a
+    // double-click even when Autoplay is on. Autoplay still auto-advances
+    // when a playing segment ends (see OnTrackEnded).
     protected override async Task OnInitializedAsync()
     {
         await base.OnInitializedAsync();
@@ -400,6 +507,9 @@
         // cannot resume after its speakSequenceAsync await completes.
         await CancelPlaybackAsync();
 
+        _expandedChapter = null;
+        _returnTargetSegment = null;
+        _pendingSegmentIndex = -1;
         selectedPlaylist = playlist;
 
         var bookChaptersResponse = await Http.PostAsJsonAsync<IList<BookChapter>>("playlist/inflate?key=NET", selectedPlaylist.BookChapters);
@@ -458,6 +568,10 @@
 
         // Remember what is currently playing so we can keep the same segment after reorder
         var playingSegment = CurrentSegment?.Segment;
+        // Same for a pending return segment (#30): it must survive a reorder.
+        var pendingSegment = _pendingSegmentIndex >= 0 && _pendingSegmentIndex < _playlistSegments.Count
+            ? _playlistSegments[_pendingSegmentIndex].Segment
+            : null;
 
         var list = selectedPlaylist.BookChapters;
         list.Remove(dropItem.Item);
@@ -473,6 +587,10 @@
         if (playingSegment != null)
         {
             _currentSegmentIndex = _playlistSegments.FindIndex(s => s.Segment == playingSegment);
+        }
+        if (pendingSegment != null)
+        {
+            _pendingSegmentIndex = _playlistSegments.FindIndex(s => s.Segment == pendingSegment);
         }
 
         await SaveLibraryAsync();
@@ -490,6 +608,10 @@
 
         try
         {
+            // Verses are stripped server-side by Newtonsoft's [JsonIgnore] on
+            // Segment.Verses (SaveEntityAsync). We must NOT null out Verses here
+            // because the in-memory Library is shared with _playlistSegments and
+            // the AudioPlayer — nulling Verses would immediately break segment playback.
             var response = await Http.PutAsJsonAsync("library", Library);
             if (!response.IsSuccessStatusCode)
             {
@@ -504,7 +626,19 @@
 
     private async Task PlayCurrentSegment()
     {
-        if (CurrentSegment == null || audioPlayer == null) return;        
+        // #30: after a return from the editor there is no current segment,
+        // only a pending one. The Play button (AudioPlayer OnPlay) reaches
+        // here, so promote the pending segment to current instead of
+        // bailing out — that early return was the #30 bug.
+        if (CurrentSegment == null && _pendingSegmentIndex >= 0 && _pendingSegmentIndex < _playlistSegments.Count)
+        {
+            _currentSegmentIndex = _pendingSegmentIndex;
+            _pendingSegmentIndex = -1;
+        }
+
+        if (CurrentSegment == null || audioPlayer == null) return;
+
+        _expandedChapter = null;
 
         // Pause any currently playing audio / cancel speech
         await audioPlayer.PauseAsync();
@@ -521,7 +655,7 @@
             SelectedChapter = chapter.ChapterNumber
         };
 
-        chapterText = $"{chapter.Book?.Name} {chapter.ChapterNumber}:{segment.VerseStart}-{segment.VerseEnd}";
+        chapterText = $"{chapter.BookName} {chapter.ChapterNumber}:{segment.VerseStart}-{segment.VerseEnd}";
 
         // Force the UI (header text) to update right now, before TTS starts
         await InvokeAsync(() =>
@@ -558,7 +692,7 @@
         }        
 
         // Only after narration completes (and we were not cancelled) do we switch the actual audio source
-        chapterAudio = $"{endpoints.Audio}{chapter.Chapter?.AudioUrl}";
+        chapterAudio = $"{endpoints.Audio}{chapter.ChapterAudioUrl}";
 
         OnHasPlayedChanged(true); // Mark HasPlayed as true after TTS completes        
         SetLoadingTrack(false);
@@ -578,15 +712,27 @@
         await js.InvokeVoidAsync("ScrollToTop");
     }
 
-    private async Task PlaySpecificSegment(BookChapter chapter, Segment segment)
+    /// <summary>
+    /// #31: double-click / double-tap handler for a segment card (and its
+    /// verse rows, which stop click propagation). Single-click deliberately
+    /// does NOT call this: single-click only seeks within the playing
+    /// segment (PlaySpecificVerse). Double-clicking the playing segment is
+    /// a no-op; double-clicking any other segment jumps to it and plays it
+    /// from its first verse, after which Next / Autoplay continue from there
+    /// in playlist order.
+    /// </summary>
+    private async Task JumpToSegmentOnDoubleClick(BookChapter chapter, Segment segment)
     {
         if (chapter == null || segment == null) return;
 
-        if (CurrentSegment.HasValue && CurrentSegment.Value.Chapter == chapter && CurrentSegment.Value.Segment == segment) return;        
+        if (CurrentSegment.HasValue && CurrentSegment.Value.Chapter == chapter && CurrentSegment.Value.Segment == segment) return;
 
         // Cancel any previous in-flight play before starting the new segment
         await CancelPlaybackAsync();
 
+        _expandedChapter = null;
+        // A pending return segment (#30) is superseded by an explicit jump.
+        _pendingSegmentIndex = -1;
         _currentSegmentIndex = _playlistSegments.FindIndex(s => s.Segment == segment);
         await PlayCurrentSegment();
     }
@@ -595,6 +741,10 @@
     {
         if (chapter == null || segment == null || verse == null) return;
 
+        // #31: single-click only works within the actively playing segment.
+        // A pending return segment (#30) is not current yet, so a single
+        // click on its verses does nothing; Play / forward / double-click
+        // start it. A verse in any other segment is likewise a no-op here.
         if (CurrentSegment.HasValue && CurrentSegment.Value.Chapter == chapter && CurrentSegment.Value.Segment == segment)
         {
             // If the verse is already in the current segment, just seek to it
@@ -616,7 +766,18 @@
         if (_playlistSegments.Count == 0) return;
 
         await CancelPlaybackAsync();
-        _currentSegmentIndex = (_currentSegmentIndex + 1) % _playlistSegments.Count;
+        // #30: forward before the pending return segment has started plays
+        // that segment, not the one after it.
+        if (_pendingSegmentIndex >= 0 && _currentSegmentIndex < 0)
+        {
+            _currentSegmentIndex = _pendingSegmentIndex;
+            _pendingSegmentIndex = -1;
+        }
+        else
+        {
+            _pendingSegmentIndex = -1;
+            _currentSegmentIndex = (_currentSegmentIndex + 1) % _playlistSegments.Count;
+        }
         await PlayCurrentSegment();
     }
 
@@ -625,7 +786,20 @@
         if (_playlistSegments.Count == 0) return;
 
         await CancelPlaybackAsync();
-        _currentSegmentIndex = (_currentSegmentIndex - 1 + _playlistSegments.Count) % _playlistSegments.Count;
+        // #30: same pending rule as forward — previous from a not-yet-started
+        // return should not skip the returned segment. Going "previous" from
+        // the pending position lands on the pending segment itself (there is
+        // no earlier started position to return to).
+        if (_pendingSegmentIndex >= 0 && _currentSegmentIndex < 0)
+        {
+            _currentSegmentIndex = _pendingSegmentIndex;
+            _pendingSegmentIndex = -1;
+        }
+        else
+        {
+            _pendingSegmentIndex = -1;
+            _currentSegmentIndex = (_currentSegmentIndex - 1 + _playlistSegments.Count) % _playlistSegments.Count;
+        }
         await PlayCurrentSegment();
     }
 
@@ -642,7 +816,7 @@
         if (selectedBook != null)
         {
             chapterText = $"{selectedBook.Name} {SelectedBookChapter.SelectedChapter}";
-            chapterAudio = $"{endpoints.Audio}{bookChapter.Chapter?.AudioUrl}";
+            chapterAudio = $"{endpoints.Audio}{bookChapter.ChapterAudioUrl}";
         }
 
         // Clear segment tracking when manually selecting a full chapter
@@ -704,6 +878,51 @@
 
     public void Dispose()
     {
-        StopPlaybackTimer();        
+        StopPlaybackTimer();
+    }
+
+    private string GetPlaylistKey()
+    {
+        return Library?.Playlists?.FirstOrDefault(p => p.Name == selectedPlaylist?.Name)?.Key
+               ?? selectedPlaylist?.Key
+               ?? string.Empty;
+    }
+
+    private void NavigateToEdit(BookChapter chapter, Segment segment)
+    {
+        var playlistKey = GetPlaylistKey();
+        var libraryCode = Library?.Code ?? string.Empty;
+        var query = $"library={System.Net.WebUtility.UrlEncode(libraryCode)}&book={chapter.BookNumber}&chapter={chapter.ChapterNumber}&playlist={System.Net.WebUtility.UrlEncode(playlistKey)}&segmentStart={segment.VerseStart}&segmentEnd={segment.VerseEnd}";
+        NavManager.NavigateTo($"/edit-segment?{query}");
+    }
+
+    private async Task DeleteSegment(BookChapter chapter, Segment segment)
+    {
+        if (chapter?.Segments == null || segment == null) return;
+
+        // #30: a pending return segment must not survive as a stale index if
+        // it (or a segment before it) is deleted; recompute by identity.
+        var pendingSegment = _pendingSegmentIndex >= 0 && _pendingSegmentIndex < _playlistSegments.Count
+            ? _playlistSegments[_pendingSegmentIndex].Segment
+            : null;
+
+        chapter.Segments.Remove(segment);
+        RebuildPlaylistSegments();
+        _currentSegmentIndex = _playlistSegments.Any()
+            ? _playlistSegments.FindIndex(s => s.Chapter == chapter)
+            : -1;
+        _pendingSegmentIndex = pendingSegment != null
+            ? _playlistSegments.FindIndex(s => s.Segment == pendingSegment)
+            : -1;
+
+        await SaveLibraryAsync();
+
+        Snackbar.Add($"Segment '{segment.VerseStart}-{segment.VerseEnd}' deleted.", Severity.Info);
+
+        await InvokeAsync(() =>
+        {
+            _dropContainer?.Refresh();
+            StateHasChanged();
+        });
     }
 }

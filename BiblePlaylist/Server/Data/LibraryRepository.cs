@@ -53,7 +53,9 @@ namespace BiblePlaylist.Server.Data
                             new BookChapter()
                             {
                                 BookNumber = 43,
+                                BookName = "John",
                                 ChapterNumber = 1,
+                                ChapterAudioUrl = "43-John-01.mp3",
                                 Display = "John 1:1-9",
                                 VersionCode = "NET",
                                 VoiceText = "John chapter 1",
@@ -71,7 +73,9 @@ namespace BiblePlaylist.Server.Data
                             new BookChapter()
                             {
                                 BookNumber = 42,
+                                BookName = "Luke",
                                 ChapterNumber = 1,
+                                ChapterAudioUrl = "42-Luke-01.mp3",
                                 Display = "Luke 1:26-47",
                                 VersionCode = "NET",
                                 VoiceText = "Luke chapter 1",
@@ -89,7 +93,9 @@ namespace BiblePlaylist.Server.Data
                             new BookChapter()
                             {
                                 BookNumber = 40,
+                                BookName = "Matthew",
                                 ChapterNumber = 1,
+                                ChapterAudioUrl = "40-Matthew-01.mp3",
                                 Display = "Matthew 1:17-25",
                                 VersionCode = "NET",
                                 VoiceText = "Matthew chapter 1",
@@ -107,7 +113,9 @@ namespace BiblePlaylist.Server.Data
                             new BookChapter()
                             {
                                 BookNumber = 42,
+                                BookName = "Luke",
                                 ChapterNumber = 2,
+                                ChapterAudioUrl = "42-Luke-02.mp3",
                                 Display = "Luke 2:1-39",
                                 VersionCode = "NET",
                                 VoiceText = "Luke chapter 2",
@@ -125,7 +133,9 @@ namespace BiblePlaylist.Server.Data
                             new BookChapter()
                             {
                                 BookNumber = 40,
+                                BookName = "Matthew",
                                 ChapterNumber = 2,
+                                ChapterAudioUrl = "40-Matthew-02.mp3",
                                 Display = "Matthew 2:1-15",
                                 VersionCode = "NET",
                                 VoiceText = "Matthew chapter 2",

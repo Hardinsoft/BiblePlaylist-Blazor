@@ -84,12 +84,11 @@ namespace BiblePlaylist.Server.Controllers
                 var enriched = new BookChapter
                 {
                     VersionCode = version.Code,
-                    Book = match.Book,
                     BookNumber = match.Book.Number,
-                    Chapter = match.Chapter,
+                    BookName = match.Book.Name,
                     ChapterNumber = match.Chapter.Number,
-                    Segments = segments,
-                    // Display and VoiceText will be computed by getters
+                    ChapterAudioUrl = match.Chapter.AudioUrl,
+                    Segments = segments
                 };
 
                 result.Add(enriched);

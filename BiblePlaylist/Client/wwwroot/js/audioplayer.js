@@ -252,17 +252,15 @@ window.seekAudioPlayer = (playerId, time) => {
     }
 };
 
-// Scroll to a specific verse element, accounting for the fixed MudAppBar header
+// Scroll to a specific verse element, centered in the viewport (#30/#31:
+// "center" means the playing verse sits in the middle of the viewport, not
+// near the top under the fixed header as the previous calculation did).
 window.scrollToVerse = (id) => {
     const el = document.getElementById(id);
     if (!el) return;
 
-    const appBar = document.querySelector('.mud-appbar');
-    const headerHeight = appBar ? appBar.offsetHeight : 64;
-    const extraBuffer = 250; // extra pixels so the verse isn't right at the edge of the header
-
-    const elementPosition = el.getBoundingClientRect().top + window.pageYOffset;
-    const offsetPosition = elementPosition - headerHeight - extraBuffer;
+    const elementCenter = el.getBoundingClientRect().top + window.pageYOffset + el.offsetHeight / 2;
+    const offsetPosition = elementCenter - window.innerHeight / 2;
 
     window.scrollTo({
         top: offsetPosition,
