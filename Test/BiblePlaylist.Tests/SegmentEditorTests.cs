@@ -97,7 +97,7 @@ namespace BiblePlaylist.Tests
         }
     }
 
-    public class SegmentEditorTests : TestContext
+    public class SegmentEditorTests : Bunit.TestContext
     {
         public RecordingJSRuntime JSRuntime { get; private set; } = null!;
         public RecordingHttpMessageHandler HttpHandler { get; private set; } = null!;
@@ -525,7 +525,7 @@ namespace BiblePlaylist.Tests
 
             Assert.NotNull(putRequest);
 
-            var putBody = await putRequest.Content.ReadAsStringAsync();
+            var putBody = await putRequest.Content.ReadAsStringAsync(Xunit.TestContext.Current.CancellationToken);
             // Verses may appear as null (client uses System.Text.Json which doesn't
             // see Newtonsoft's [JsonIgnore]), but the key requirement is NO verse DATA:
             Assert.DoesNotContain("[{\"number\"", putBody);   // no verse array
