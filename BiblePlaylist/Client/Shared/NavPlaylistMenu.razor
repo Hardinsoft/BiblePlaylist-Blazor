@@ -188,7 +188,7 @@
     private bool hideVerses { get; set; } = true;
     private bool loadingTrack { get; set; } = false;
 
-    private Library Library { get; set; } = new Library();
+    private Library? Library { get; set; }
     private Playlist selectedPlaylist { get; set; } = null!;
 
     [Parameter]

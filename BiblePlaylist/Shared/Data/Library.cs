@@ -12,7 +12,7 @@ namespace BiblePlaylist.Shared.Data
         public string Key {  get; set; }
         public string UPN { get; set; }
         public string Code { get; set; }
-        public List<Playlist.Playlist> Playlists {  get; set; }
+        public List<Playlist.Playlist> Playlists { get; set; } = new List<Playlist.Playlist>();
         public Library() { }
         
     }
