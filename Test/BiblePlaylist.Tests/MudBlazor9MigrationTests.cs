@@ -9,7 +9,7 @@ using MudBlazor.Services;
 
 namespace BiblePlaylist.Tests
 {
-    public class MudBlazor9MigrationTests : TestContext
+    public class MudBlazor9MigrationTests : Bunit.TestContext
     {
         public MudBlazor9MigrationTests()
         {
