@@ -20,8 +20,8 @@
 
 @code {
     private List<BiblePlaylist.Shared.Bible.Verse> displayVerses = new List<BiblePlaylist.Shared.Bible.Verse>();
-    private BiblePlaylist.Shared.DTO.SelectedBookChapter SelectedBookChapter { get; set; }
-    private string previousBookChapter;
+    private BiblePlaylist.Shared.DTO.SelectedBookChapter? SelectedBookChapter { get; set; }
+    private string previousBookChapter = string.Empty;
     
 
     protected override async Task OnParametersSetAsync()
@@ -42,14 +42,25 @@
             {
                 var lastReadResponse = await Http.GetAsync($"Version?key={BiblePlaylist.Shared.Structs.Version.NET}&Book=1&Chapter=1");
                 lastRead = await lastReadResponse.Content.ReadFromJsonAsync<BiblePlaylist.Shared.Bible.Version>();
-                await localStorage.SetItemAsync<BiblePlaylist.Shared.Bible.Version>("userName_lastread", lastRead);
+                if (lastRead != null)
+                    await localStorage.SetItemAsync<BiblePlaylist.Shared.Bible.Version>("userName_lastread", lastRead);
             }
 
+            if (lastRead == null || lastRead.Books == null)
+                return;
+
             var lastBook = lastRead.Books.FirstOrDefault();
-            SelectedBookChapter = new BiblePlaylist.Shared.DTO.SelectedBookChapter() { SelectedBook = lastBook.Number, SelectedChapter = lastBook.Chapters.FirstOrDefault().Number };
+            if (lastBook == null)
+                return;
+            var lastChapter = lastBook.Chapters.FirstOrDefault();
+            if (lastChapter == null)
+                return;
+            SelectedBookChapter = new BiblePlaylist.Shared.DTO.SelectedBookChapter() { SelectedBook = lastBook.Number, SelectedChapter = lastChapter.Number };
             previousBookChapter = $"{SelectedBookChapter.SelectedChapter}{SelectedBookChapter.SelectedBook}";
 
-            if (displayVerses != null && displayVerses.Count > 1)
+            if (displayVerses == null)
+                displayVerses = new List<BiblePlaylist.Shared.Bible.Verse>();
+            else if (displayVerses.Count > 1)
                 displayVerses.Clear();
 
             foreach (var book in lastRead.Books)
@@ -85,7 +96,7 @@
             previousBookChapter = $"{selectedBookChapter.SelectedChapter}{selectedBookChapter.SelectedBook}";
             var lastReadResponse = await Http.GetAsync($"Version?key={BiblePlaylist.Shared.Structs.Version.NET}&Book={selectedBookChapter.SelectedBook.ToString()}&Chapter={selectedBookChapter.SelectedChapter.ToString()}");
 
-            BiblePlaylist.Shared.Bible.Version lastRead = null;
+            BiblePlaylist.Shared.Bible.Version? lastRead = null;
 
             try
             {
@@ -95,13 +106,17 @@
             {
                 logger.LogError(ex, "Cannot load version from Storage");
             }
+            if (lastRead == null)
+                return;
             await localStorage.SetItemAsync<BiblePlaylist.Shared.Bible.Version>("userName_lastread", lastRead);
 
 
             var displayChapter = lastRead.Books.Where(b => b.Number == selectedBookChapter.SelectedBook).Where(c => c.Number == selectedBookChapter.SelectedChapter).FirstOrDefault();
           
 
-            if (displayVerses != null && displayVerses.Count > 1)
+            if (displayVerses == null)
+                displayVerses = new List<BiblePlaylist.Shared.Bible.Verse>();
+            else if (displayVerses.Count > 1)
                 displayVerses.Clear();
 
             foreach(var book in lastRead.Books)

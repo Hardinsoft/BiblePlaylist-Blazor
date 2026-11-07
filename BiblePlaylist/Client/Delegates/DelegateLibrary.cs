@@ -11,11 +11,11 @@ namespace BiblePlaylist.Client.Events
 {
     public class DelegateLibrary : IDelegateLibrary
     {
-        public event EventHandler<EventArgs<SelectedBookChapter>> ChapterChanged;        
+        public event EventHandler<EventArgs<SelectedBookChapter>> ChapterChanged = delegate { };
         public void NotifyChapterChanged(object sender, EventArgs<SelectedBookChapter> e)
             => ChapterChanged?.Invoke(sender, e);
 
-        public event EventHandler<EventArgs<bool>> HasPlayedChanged;
+        public event EventHandler<EventArgs<bool>> HasPlayedChanged = delegate { };
         public void NotifyHasPlayedChanged(object sender, EventArgs<bool> e)
             => HasPlayedChanged?.Invoke(sender, e);
     }

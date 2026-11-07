@@ -22,7 +22,7 @@
 <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-3">
     @if (!isInitialized)
     {
-        <MudParagraph>Loading...</MudParagraph>
+        <MudText>Loading...</MudText>
     }
     else if (!chapterLoaded)
     {
@@ -33,7 +33,7 @@
     else
     {
         <!-- Top bar: chapter ref + Play/Stop + Save/Cancel -->
-        <MudStack Row Spacing="2" Class="mb-3" Align="Align.Center">
+        <MudStack Row Spacing="2" Class="mb-3" AlignItems="AlignItems.Center">
             <MudText Typo="Typo.h5" Class="flex-grow-1">@chapterReference</MudText>
             <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="TogglePlayback">
                 @if (_isPlaying)
@@ -118,10 +118,10 @@
     private bool isInitialized;
     private bool chapterLoaded;
     private bool playlistLoadFailed;
-    private string chapterReference;
+    private string chapterReference = string.Empty;
     private List<Verse> displayVerses = new();
     private HashSet<int> _selectedVerseNumbers = new();
-    private string _currentPlayingVerseId;
+    private string? _currentPlayingVerseId;
     private bool _isPlaying;
     private SegmentMode Mode = SegmentMode.Create;
 
@@ -134,7 +134,7 @@
 
     private decimal _segmentStartAudio;
     private decimal _segmentEndAudio;
-    private string _chapterAudioUrl;
+    private string _chapterAudioUrl = string.Empty;
     private string _bookName = "";
     private System.Timers.Timer? _playbackTimer;
     private DotNetObjectReference<SegmentEditor>? _dotNetRef;
@@ -489,7 +489,7 @@
                         .FirstOrDefault(s => s.VerseStart == SegmentStart && s.VerseEnd == SegmentEnd);
                 }
 
-                if (existing != null)
+                if (existing != null && bookChapter.Segments != null)
                 {
                     var idx = bookChapter.Segments.IndexOf(existing);
                     if (idx >= 0)

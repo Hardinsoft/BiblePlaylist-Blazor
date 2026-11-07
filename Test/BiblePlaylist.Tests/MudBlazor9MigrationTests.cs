@@ -23,7 +23,7 @@ namespace BiblePlaylist.Tests
         {
             // Use reflection to avoid compile-time dependency on new interfaces
             var mudAssembly = AppDomain.CurrentDomain.GetAssemblies()
-                .FirstOrDefault(a => a.GetName().Name.Equals("MudBlazor", StringComparison.OrdinalIgnoreCase));
+                .FirstOrDefault(a => string.Equals(a.GetName().Name, "MudBlazor", StringComparison.OrdinalIgnoreCase));
 
             // If MudBlazor assembly is not loaded, test is inconclusive (will fail later when Dallas adds updates)
             Assert.NotNull(mudAssembly);
@@ -60,7 +60,7 @@ namespace BiblePlaylist.Tests
         public async Task Migration_DialogService_ShowMessageBoxAsync_Invokeable()
         {
             var mudAssembly = AppDomain.CurrentDomain.GetAssemblies()
-                .FirstOrDefault(a => a.GetName().Name.Equals("MudBlazor", StringComparison.OrdinalIgnoreCase));
+                .FirstOrDefault(a => string.Equals(a.GetName().Name, "MudBlazor", StringComparison.OrdinalIgnoreCase));
             Assert.NotNull(mudAssembly);
 
             var idialogType = mudAssembly.GetType("MudBlazor.IDialogService");

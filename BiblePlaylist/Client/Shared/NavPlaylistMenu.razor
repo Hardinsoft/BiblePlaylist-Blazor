@@ -146,7 +146,7 @@
                                                                             <MudMenuItem Label="Edit segment"
                                                                                          @onclick="() => NavigateToEdit(context, segment)" />
                                                                             <MudMenuItem Label="Delete segment"
-                                                                                         Color="Color.Error"
+                                                                                         Style="color: var(--mud-palette-error);"
                                                                                          @onclick="() => DeleteSegment(context, segment)" />
                                                                         </MudMenu>
                                                                     </div>
@@ -174,27 +174,27 @@
 </MudPaper>
 
 @code {
-    private AudioPlayer audioPlayer;
-    private MudDropContainer<BookChapter> _dropContainer;
+    private AudioPlayer audioPlayer = null!;
+    private MudDropContainer<BookChapter> _dropContainer = null!;
 
-    private BiblePlaylist.Shared.DTO.SelectedBookChapter SelectedBookChapter { get; set; }
-    private BiblePlaylist.Shared.Navigation.BibleMenu bibleMenu { get; set; }
-    private string chapterText { get; set; }
-    private string chapterAudio { get; set; }
-    private string selectedBookRef { get; set; }
+    private BiblePlaylist.Shared.DTO.SelectedBookChapter SelectedBookChapter { get; set; } = null!;
+    private BiblePlaylist.Shared.Navigation.BibleMenu? bibleMenu { get; set; }
+    private string? chapterText { get; set; }
+    private string chapterAudio { get; set; } = null!;
+    private string? selectedBookRef { get; set; }
     private bool hide { get; set; } = true;
     private bool hideChapters { get; set; } = true;
     private bool hidePlaylists { get; set; } = false;
     private bool hideVerses { get; set; } = true;
     private bool loadingTrack { get; set; } = false;
 
-    private Library Library { get; set; }
-    private Playlist selectedPlaylist { get; set; }
+    private Library Library { get; set; } = new Library();
+    private Playlist selectedPlaylist { get; set; } = null!;
 
     [Parameter]
-    public string PlaylistName { get; set; }
+    public string PlaylistName { get; set; } = null!;
 
-    private BiblePlaylist.Shared.Data.UserSettings userSettings;
+    private BiblePlaylist.Shared.Data.UserSettings userSettings = null!;
 
     private bool _hasPlayed { get; set; } = false;
     public bool HasPlayed
@@ -263,8 +263,8 @@
     private int _pendingSegmentIndex = -1;
     private decimal _currentPlaybackTime;
     private System.Timers.Timer? _playbackTimer;
-    private string _currentPlayingVerseId;
-    private string _lastScrolledVerseId;
+    private string? _currentPlayingVerseId;
+    private string? _lastScrolledVerseId;
 
     private (BookChapter Chapter, Segment Segment)? CurrentSegment =>
         (_currentSegmentIndex >= 0 && _currentSegmentIndex < _playlistSegments.Count)
@@ -339,7 +339,7 @@
             _currentPlaybackTime = time;
 
             // Resolve the active verse from data (not during render) so scroll + highlight stay in sync
-            string playingVerseId = null;
+            string? playingVerseId = null;
             if (CurrentSegment.HasValue)
             {
                 var (chapter, segment) = CurrentSegment.Value;
@@ -379,7 +379,11 @@
     protected override async Task OnParametersSetAsync()
     {
         if (userSettings == null)
-            userSettings = await localStorage.GetItemAsync<BiblePlaylist.Shared.Data.UserSettings>("userName_settings");
+        {
+            var storedSettings = await localStorage.GetItemAsync<BiblePlaylist.Shared.Data.UserSettings>("userName_settings");
+            if (storedSettings != null)
+                userSettings = storedSettings;
+        }
 
         if (userSettings == null)
         {
@@ -479,7 +483,7 @@
         await base.OnInitializedAsync();
 
         string libraryResponse = await Http.GetStringAsync("library?key=library_greg_hardin_live_com");
-        Library = JsonConvert.DeserializeObject<Library>(libraryResponse);
+        Library = JsonConvert.DeserializeObject<Library>(libraryResponse) ?? new Library();
         delegateLibrary.HasPlayedChanged += (o, e) => OnHasPlayedChanged(e.Value);
 
     }
@@ -516,7 +520,7 @@
         List<BookChapter> inflatedBookChapters = new List<BookChapter>();
 
         if (bookChaptersResponse.IsSuccessStatusCode)
-            inflatedBookChapters = await bookChaptersResponse.Content.ReadFromJsonAsync<List<BookChapter>>();
+            inflatedBookChapters = await bookChaptersResponse.Content.ReadFromJsonAsync<List<BookChapter>>() ?? new List<BookChapter>();
 
         selectedPlaylist.BookChapters.Clear();
         inflatedBookChapters.ForEach(bc => selectedPlaylist.BookChapters.Add(bc));
@@ -692,7 +696,7 @@
         }        
 
         // Only after narration completes (and we were not cancelled) do we switch the actual audio source
-        chapterAudio = $"{endpoints.Audio}{chapter.ChapterAudioUrl}";
+        chapterAudio = $"{endpoints.Audio}{chapter!.ChapterAudioUrl}";
 
         OnHasPlayedChanged(true); // Mark HasPlayed as true after TTS completes        
         SetLoadingTrack(false);

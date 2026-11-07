@@ -169,7 +169,7 @@ namespace BiblePlaylist.Tests
             var cut = RenderReturnMenu();
             try
             {
-                cut.Find("[title='Next segment']").Click();
+                cut.Find("[aria-label='Next segment']").Click();
                 cut.WaitForAssertion(() => Assert.Equal(1, GetInt(cut, "_currentSegmentIndex")),
                     TimeSpan.FromSeconds(5));
                 Assert.Equal(-1, GetInt(cut, "_pendingSegmentIndex"));
