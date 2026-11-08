@@ -45,31 +45,27 @@ namespace BiblePlaylist.Tests
     public class RecordingHttpMessageHandler : HttpMessageHandler
     {
         public List<HttpRequestMessage> Requests { get; } = new();
-        private readonly Dictionary<string, HttpResponseMessage> _getResponses = new();
-        private readonly Dictionary<string, HttpResponseMessage> _putResponses = new();
-        private readonly Dictionary<string, HttpResponseMessage> _postResponses = new();
+        private readonly Dictionary<string, string> _getResponses = new();
+        private readonly Dictionary<string, string> _postResponses = new();
+        private readonly HashSet<string> _putResponses = new();
 
         public void SetupGet(string uriContains, string body)
         {
-            var response = new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StringContent(body, Encoding.UTF8, "application/json")
-            };
-            _getResponses[uriContains] = response;
+            // Store the body, not the response: HttpClient disposes each
+            // response after reading it, so a shared instance breaks on the
+            // second GET of the same URI — Edit mode loads the library, then
+            // saves it with a fresh GET.
+            _getResponses[uriContains] = body;
         }
 
         public void SetupPut(string uriContains)
         {
-            _putResponses[uriContains] = new HttpResponseMessage(HttpStatusCode.OK);
+            _putResponses.Add(uriContains);
         }
 
         public void SetupPost(string uriContains, string body)
         {
-            var response = new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StringContent(body, Encoding.UTF8, "application/json")
-            };
-            _postResponses[uriContains] = response;
+            _postResponses[uriContains] = body;
         }
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -79,18 +75,26 @@ namespace BiblePlaylist.Tests
 
             if (request.Method == HttpMethod.Get)
             {
-                foreach (var (key, resp) in _getResponses)
-                    if (uri.Contains(key)) return resp;
+                foreach (var (key, body) in _getResponses)
+                    if (uri.Contains(key))
+                        return new HttpResponseMessage(HttpStatusCode.OK)
+                        {
+                            Content = new StringContent(body, Encoding.UTF8, "application/json")
+                        };
             }
             else if (request.Method == HttpMethod.Put)
             {
-                foreach (var (key, resp) in _putResponses)
-                    if (uri.Contains(key)) return resp;
+                foreach (var key in _putResponses)
+                    if (uri.Contains(key)) return new HttpResponseMessage(HttpStatusCode.OK);
             }
             else if (request.Method == HttpMethod.Post)
             {
-                foreach (var (key, resp) in _postResponses)
-                    if (uri.Contains(key)) return resp;
+                foreach (var (key, body) in _postResponses)
+                    if (uri.Contains(key))
+                        return new HttpResponseMessage(HttpStatusCode.OK)
+                        {
+                            Content = new StringContent(body, Encoding.UTF8, "application/json")
+                        };
             }
 
             return new HttpResponseMessage(HttpStatusCode.NotFound);
@@ -490,6 +494,143 @@ namespace BiblePlaylist.Tests
 
             Assert.NotNull(cut);
             Assert.Contains("Select verses to create a new segment", cut.Markup);
+        }
+
+        private async Task ClickSave(IRenderedComponent<BiblePlaylist.Client.Pages.SegmentEditor> cut)
+        {
+            await cut.InvokeAsync(() =>
+            {
+                var saveButton = cut.FindAll("button").LastOrDefault(b => b.TextContent.Contains("Save"));
+                saveButton?.Click();
+            });
+
+            await cut.InvokeAsync(() => Task.Delay(50));
+        }
+
+        private async Task<List<Segment>?> GetSavedSegments()
+        {
+            var putRequest = HttpHandler.Requests.FirstOrDefault(req =>
+                req.Method == HttpMethod.Put &&
+                req.RequestUri?.AbsoluteUri.Contains("library") == true);
+            if (putRequest?.Content == null) return null;
+
+            var putBody = await putRequest.Content.ReadAsStringAsync(Xunit.TestContext.Current.CancellationToken);
+            var savedLibrary = JsonConvert.DeserializeObject<Library>(putBody);
+            return savedLibrary?.Playlists?.FirstOrDefault()?.BookChapters?
+                .FirstOrDefault()?.Segments?.ToList();
+        }
+
+        /// <summary>
+        /// #25: editing A (2-4) to exactly B's range (1-5) must replace A in
+        /// place. Overlap between segments is allowed, so B is untouched.
+        /// The old code looked the NEW range up first and overwrote B.
+        /// </summary>
+        [Fact]
+        public async Task Editor_EditMode_SaveToExistingRange_ReplacesOriginalNotOther()
+        {
+            SetupVersionResponse(1, 5);
+            SetupLibraryResponse("test-playlist", 1, 5, new List<Segment>
+            {
+                new Segment { VerseStart = 2, VerseEnd = 4 },
+                new Segment { VerseStart = 1, VerseEnd = 5 }
+            });
+            HttpHandler.SetupPut("library");
+
+            var cut = RenderEditor(1, 5, "test-playlist", 2, 4);
+            await cut.InvokeAsync(() => Task.Delay(50));
+
+            SetSelectedVerses(cut, new[] { 1, 2, 3, 4, 5 });
+            await ClickSave(cut);
+
+            var saved = await GetSavedSegments();
+            Assert.NotNull(saved);
+            Assert.Equal(2, saved!.Count);
+            Assert.Equal(1, saved[0].VerseStart);
+            Assert.Equal(5, saved[0].VerseEnd);
+            Assert.Equal(1, saved[1].VerseStart);
+            Assert.Equal(5, saved[1].VerseEnd);
+        }
+
+        /// <summary>
+        /// #25: editing with a changed range and no collision applies in place.
+        /// </summary>
+        [Fact]
+        public async Task Editor_EditMode_SaveChangedRange_AppliesInPlace()
+        {
+            SetupVersionResponse(1, 5);
+            SetupLibraryResponse("test-playlist", 1, 5, new List<Segment>
+            {
+                new Segment { VerseStart = 2, VerseEnd = 4 }
+            });
+            HttpHandler.SetupPut("library");
+
+            var cut = RenderEditor(1, 5, "test-playlist", 2, 4);
+            await cut.InvokeAsync(() => Task.Delay(50));
+
+            SetSelectedVerses(cut, new[] { 1, 2, 3 });
+            await ClickSave(cut);
+
+            var saved = await GetSavedSegments();
+            Assert.NotNull(saved);
+            Assert.Single(saved!);
+            Assert.Equal(1, saved[0].VerseStart);
+            Assert.Equal(3, saved[0].VerseEnd);
+        }
+
+        /// <summary>
+        /// #25: when the segment being edited is gone by save time (stale URL
+        /// parameters), the save must fail without writing anything — no PUT,
+        /// nothing added.
+        /// </summary>
+        [Fact]
+        public async Task Editor_EditMode_StaleUrlParameters_DoesNotSave()
+        {
+            SetupVersionResponse(1, 5);
+            SetupLibraryResponse("test-playlist", 1, 5, new List<Segment>
+            {
+                new Segment { VerseStart = 2, VerseEnd = 4 }
+            });
+            HttpHandler.SetupPut("library");
+
+            var cut = RenderEditor(1, 5, "test-playlist", 2, 4);
+            await cut.InvokeAsync(() => Task.Delay(50));
+
+            // The segment is deleted before saving: the next library GET
+            // returns a chapter with no segments.
+            SetupLibraryResponse("test-playlist", 1, 5, new List<Segment>());
+
+            SetSelectedVerses(cut, new[] { 1, 2 });
+            await ClickSave(cut);
+
+            Assert.DoesNotContain(HttpHandler.Requests,
+                req => req.Method == HttpMethod.Put &&
+                       req.RequestUri?.AbsoluteUri.Contains("library") == true);
+        }
+
+        /// <summary>
+        /// #25: an edit that keeps the same range still applies as before.
+        /// </summary>
+        [Fact]
+        public async Task Editor_EditMode_UnchangedRange_AppliesAsBefore()
+        {
+            SetupVersionResponse(1, 5);
+            SetupLibraryResponse("test-playlist", 1, 5, new List<Segment>
+            {
+                new Segment { VerseStart = 2, VerseEnd = 4 }
+            });
+            HttpHandler.SetupPut("library");
+
+            var cut = RenderEditor(1, 5, "test-playlist", 2, 4);
+            await cut.InvokeAsync(() => Task.Delay(50));
+
+            SetSelectedVerses(cut, new[] { 2, 3, 4 });
+            await ClickSave(cut);
+
+            var saved = await GetSavedSegments();
+            Assert.NotNull(saved);
+            Assert.Single(saved!);
+            Assert.Equal(2, saved[0].VerseStart);
+            Assert.Equal(4, saved[0].VerseEnd);
         }
 
         /// <summary>

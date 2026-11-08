@@ -493,27 +493,27 @@
 
             if (Mode == SegmentMode.Edit)
             {
+                // #25: identify the segment being edited by its ORIGINAL range
+                // from the URL parameters (SegmentStart/SegmentEnd). The old
+                // code looked the NEW range up first, so editing A to B's
+                // range overwrote B and left A untouched. Overlap between
+                // segments is allowed (Greg, 2026-11-08), so a new range
+                // matching another segment is fine — the old range is what
+                // identifies this segment.
                 var existing = bookChapter.Segments?
-                    .FirstOrDefault(s => s.VerseStart == segment.VerseStart && s.VerseEnd == segment.VerseEnd);
-                // If the range changed, find by the old range from the URL parameters
+                    .FirstOrDefault(s => s.VerseStart == SegmentStart && s.VerseEnd == SegmentEnd);
+
                 if (existing == null)
                 {
-                    existing = bookChapter.Segments?
-                        .FirstOrDefault(s => s.VerseStart == SegmentStart && s.VerseEnd == SegmentEnd);
+                    Snackbar.Add("Original segment not found — it may have been deleted.", Severity.Error);
+                    return;
                 }
 
-                if (existing != null && bookChapter.Segments != null)
+                if (bookChapter.Segments != null)
                 {
                     var idx = bookChapter.Segments.IndexOf(existing);
                     if (idx >= 0)
                         bookChapter.Segments[idx] = segment;
-                }
-                else
-                {
-                    // Edge case: segment not found by range — add as new
-                    if (bookChapter.Segments == null)
-                        bookChapter.Segments = new List<Segment>();
-                    bookChapter.Segments.Add(segment);
                 }
             }
             else // Create mode
