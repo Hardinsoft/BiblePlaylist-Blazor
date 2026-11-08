@@ -218,6 +218,85 @@ namespace BiblePlaylist.Tests
             _ = cut.InvokeAsync(() => { });
         }
 
+        // Read the private selection field — the ToggleVerseAsync path is the only
+        // way the UI changes it, so tests below exercise the real click handler.
+        private HashSet<int> GetSelectedVerses(IRenderedComponent<BiblePlaylist.Client.Pages.SegmentEditor> cut)
+        {
+            var field = typeof(BiblePlaylist.Client.Pages.SegmentEditor)
+                .GetField("_selectedVerseNumbers", BindingFlags.NonPublic | BindingFlags.Instance);
+            return (field?.GetValue(cut.Instance) as HashSet<int>) ?? new HashSet<int>();
+        }
+
+        private void ClickVerseRow(IRenderedComponent<BiblePlaylist.Client.Pages.SegmentEditor> cut, int verseNumber)
+        {
+            var row = cut.FindAll("div.d-flex.align-start")
+                .FirstOrDefault(d => d.TextContent.Contains($"Verse {verseNumber} text."));
+            Assert.NotNull(row);
+            row!.Click();
+        }
+
+        /// <summary>
+        /// #24: toggling verses 1 then 5 must visibly select the whole 1-5 range,
+        /// so the displayed selection is exactly what SaveSegment will store.
+        /// </summary>
+        [Fact]
+        public async Task Editor_Toggle_NonContiguous_FillsRange()
+        {
+            SetupVersionResponse(1, 5);
+            var cut = RenderEditor(1, 5);
+            await cut.InvokeAsync(() => Task.Delay(50));
+
+            await cut.InvokeAsync(() => ClickVerseRow(cut, 1));
+            await cut.InvokeAsync(() => ClickVerseRow(cut, 5));
+            await cut.InvokeAsync(() => Task.Delay(50));
+
+            cut.WaitForAssertion(() =>
+            {
+                Assert.Equal(new HashSet<int> { 1, 2, 3, 4, 5 }, GetSelectedVerses(cut));
+                Assert.Contains("Segment: 1-5 (5 verses)", cut.Markup);
+            });
+        }
+
+        /// <summary>
+        /// #24: after toggling 1 then 5, the saved segment must be 1-5 — the
+        /// displayed range, not a silent rewrite of a non-contiguous selection.
+        /// </summary>
+        [Fact]
+        public async Task Editor_Toggle_NonContiguous_SavePersistsDisplayedRange()
+        {
+            SetupVersionResponse(1, 5);
+            SetupLibraryResponse("test-playlist", 1, 5);
+            HttpHandler.SetupPut("library");
+
+            var cut = RenderEditor(1, 5, "test-playlist");
+            await cut.InvokeAsync(() => Task.Delay(50));
+
+            await cut.InvokeAsync(() => ClickVerseRow(cut, 1));
+            await cut.InvokeAsync(() => ClickVerseRow(cut, 5));
+            await cut.InvokeAsync(() => Task.Delay(50));
+
+            await cut.InvokeAsync(() =>
+            {
+                var saveButton = cut.FindAll("button").LastOrDefault(b => b.TextContent.Contains("Save"));
+                saveButton?.Click();
+            });
+
+            await cut.InvokeAsync(() => Task.Delay(50));
+
+            var putRequest = HttpHandler.Requests.FirstOrDefault(req =>
+                req.Method == HttpMethod.Put &&
+                req.RequestUri?.AbsoluteUri.Contains("library") == true);
+            Assert.NotNull(putRequest);
+
+            var putBody = await putRequest!.Content!.ReadAsStringAsync(Xunit.TestContext.Current.CancellationToken);
+            var savedLibrary = JsonConvert.DeserializeObject<Library>(putBody);
+            var savedSegment = savedLibrary?.Playlists?.FirstOrDefault()?.BookChapters?
+                .FirstOrDefault()?.Segments?.FirstOrDefault();
+            Assert.NotNull(savedSegment);
+            Assert.Equal(1, savedSegment!.VerseStart);
+            Assert.Equal(5, savedSegment.VerseEnd);
+        }
+
         [Fact]
         public void Editor_Renders_WithoutCrashing()
         {

@@ -271,6 +271,19 @@
         else
             _selectedVerseNumbers.Add(verseNumber);
 
+        // #24: a segment is a contiguous range, so fill any gap the toggle opened.
+        // What the user sees selected is then always exactly what will save
+        // (SaveSegment stores min..max); without this, toggling 1 then 5
+        // displayed {1, 5} but saved 1-5. Deselecting an endpoint shrinks the
+        // range; deselecting an interior verse re-fills it (a no-op).
+        if (_selectedVerseNumbers.Count > 0)
+        {
+            var minSelected = _selectedVerseNumbers.Min();
+            var maxSelected = _selectedVerseNumbers.Max();
+            for (var n = minSelected; n <= maxSelected; n++)
+                _selectedVerseNumbers.Add(n);
+        }
+
         RecomputeSegmentRange();
 
         if (wasPlaying)
