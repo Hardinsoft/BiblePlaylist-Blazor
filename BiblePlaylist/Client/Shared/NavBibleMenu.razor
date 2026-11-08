@@ -50,7 +50,7 @@
                             <MudGrid>
                                 @if (bibleMenu != null)
                                 {                                   
-                                    foreach (var c in bibleMenu.Books.FirstOrDefault(b => b.Number == SelectedBookChapter.SelectedBook).Chapters)
+                                    foreach (var c in bibleMenu.Books.FirstOrDefault(b => b.Number == SelectedBookChapter.SelectedBook)?.Chapters ?? b.Chapters)
                                     {
                                         <MudItem md="1" xs="2">
                                             <MudPaper @onclick="@(async e => await SelectChapter(c))" Style="cursor: pointer" Class="d-flex align-center justify-center mud-width-full py-4">@c.Number</MudPaper>
@@ -70,20 +70,20 @@
 </MudPaper>
 
 @code {
-    private AudioPlayer audioPlayer;
-    private BiblePlaylist.Shared.DTO.SelectedBookChapter SelectedBookChapter { get; set; }    
-    private BiblePlaylist.Shared.Navigation.BibleMenu bibleMenu { get; set; }
-    private string chapterText { get; set; }
-    private string chapterAudio { get; set; }
-    private string selectedBookRef { get; set; }
+    private AudioPlayer audioPlayer = null!;
+    private BiblePlaylist.Shared.DTO.SelectedBookChapter SelectedBookChapter { get; set; } = null!;
+    private BiblePlaylist.Shared.Navigation.BibleMenu bibleMenu { get; set; } = null!;
+    private string chapterText { get; set; } = string.Empty;
+    private string chapterAudio { get; set; } = string.Empty;
+    private string selectedBookRef { get; set; } = string.Empty;
     private bool hide { get; set; } = true;
     private bool hideChapters { get; set; } = true;
     private bool hideVerses { get; set; } = true;
     private bool loadAudio { get; set; } = true;    
-    private BiblePlaylist.Shared.Data.UserSettings userSettings;
-    private DotNetObjectReference<NavBibleMenu> objRef;
+    private BiblePlaylist.Shared.Data.UserSettings userSettings = null!;
+    private DotNetObjectReference<NavBibleMenu> objRef = null!;
     private bool _netObjectIsSet = false;
-    private BiblePlaylist.Shared.Bible.Version lastRead;
+    private BiblePlaylist.Shared.Bible.Version lastRead = null!;
     private bool loadingTrack { get; set; } = false;
 
     private bool _hasPlayed { get; set; } = false;
@@ -141,20 +141,31 @@
                 await SetBibleMenu();
 
             if (lastRead == null)
-                lastRead = await localStorage.GetItemAsync<BiblePlaylist.Shared.Bible.Version>("userName_lastread");
+            {
+                var storedLastRead = await localStorage.GetItemAsync<BiblePlaylist.Shared.Bible.Version>("userName_lastread");
+                if (storedLastRead != null)
+                    lastRead = storedLastRead;
+            }
 
             if (lastRead != null)
             {
                 var selectedBook = lastRead.Books.FirstOrDefault();
-                var selectedChapter = lastRead.Books.FirstOrDefault().Chapters.FirstOrDefault();
-                var selectedBookName = selectedBook.Name;
-                var selectedBookRef = $"#{selectedBookName.Replace(" ", "_")}";
-                chapterText = $"{selectedBookName} {selectedChapter.Number}";
-                chapterAudio = $"{endpoints.Audio}{ selectedChapter.AudioUrl}";
+                var selectedChapter = selectedBook?.Chapters.FirstOrDefault();
+                if (selectedBook != null && selectedChapter != null)
+                {
+                    var selectedBookName = selectedBook.Name;
+                    var selectedBookRef = $"#{selectedBookName.Replace(" ", "_")}";
+                    chapterText = $"{selectedBookName} {selectedChapter.Number}";
+                    chapterAudio = $"{endpoints.Audio}{ selectedChapter.AudioUrl}";
+                }
             }
 
             if (userSettings == null)
-                userSettings = await localStorage.GetItemAsync<BiblePlaylist.Shared.Data.UserSettings>("userName_settings");
+            {
+                var storedSettings = await localStorage.GetItemAsync<BiblePlaylist.Shared.Data.UserSettings>("userName_settings");
+                if (storedSettings != null)
+                    userSettings = storedSettings;
+            }
 
             if (userSettings == null)
             {
@@ -193,17 +204,25 @@
         if (SelectedBookChapter == null)
         {
             if (lastRead == null)
-                lastRead = await localStorage.GetItemAsync<BiblePlaylist.Shared.Bible.Version>("userName_lastread");
+            {
+                var storedLastRead = await localStorage.GetItemAsync<BiblePlaylist.Shared.Bible.Version>("userName_lastread");
+                if (storedLastRead != null)
+                    lastRead = storedLastRead;
+            }
 
             if (lastRead == null || lastRead.Books == null)
             {
                 var lastReadResponse = await Http.GetAsync($"Version?key={BiblePlaylist.Shared.Structs.Version.NET}&Book=1&Chapter=1");
-                lastRead = await lastReadResponse.Content.ReadFromJsonAsync<BiblePlaylist.Shared.Bible.Version>();
-                await localStorage.SetItemAsync<BiblePlaylist.Shared.Bible.Version>("userName_lastread", lastRead);
+                var fetchedLastRead = await lastReadResponse.Content.ReadFromJsonAsync<BiblePlaylist.Shared.Bible.Version>();
+                if (fetchedLastRead != null)
+                {
+                    lastRead = fetchedLastRead;
+                    await localStorage.SetItemAsync<BiblePlaylist.Shared.Bible.Version>("userName_lastread", lastRead);
+                }
             }
 
-            var lastBook = lastRead.Books.FirstOrDefault();
-            SelectedBookChapter = new BiblePlaylist.Shared.DTO.SelectedBookChapter() { SelectedBook = lastBook.Number, SelectedChapter = lastBook.Chapters.FirstOrDefault().Number };               
+            var lastBook = lastRead?.Books?.FirstOrDefault();
+            SelectedBookChapter = new BiblePlaylist.Shared.DTO.SelectedBookChapter() { SelectedBook = lastBook?.Number ?? 1, SelectedChapter = lastBook?.Chapters?.FirstOrDefault()?.Number ?? 1 };               
 
             await InvokeAsync(StateHasChanged);
         }
@@ -229,7 +248,10 @@
             {
                 navSelectedBook = navSelectedBook - 4;
                 var navBook = bibleMenu.Books.Where(b => b.Number == navSelectedBook).FirstOrDefault();
-                await js.InvokeVoidAsync("NavToBook", $"#{navBook.Name.Replace(" ", "_")}");
+                if (navBook != null)
+                    await js.InvokeVoidAsync("NavToBook", $"#{navBook.Name.Replace(" ", "_")}");
+                else
+                    await js.InvokeVoidAsync("ScrollToTop");
             }
             else
                 await js.InvokeVoidAsync("ScrollToTop");
@@ -259,7 +281,10 @@
             SelectedBookChapter.SelectedBook--;
             if (bibleMenu == null)
                 await SetBibleMenu();
-            SelectedBookChapter.SelectedChapter = bibleMenu.Books.Where(b => b.Number == SelectedBookChapter.SelectedBook).FirstOrDefault().Chapters.Max(c => c.Number);
+            var prevBook = bibleMenu?.Books.Where(b => b.Number == SelectedBookChapter.SelectedBook).FirstOrDefault();
+            if (prevBook == null)
+                return;
+            SelectedBookChapter.SelectedChapter = prevBook.Chapters.Max(c => c.Number);
         }
         else
             return;
@@ -272,7 +297,10 @@
         if (bibleMenu == null)
             await SetBibleMenu();
 
-        int lastChapter = bibleMenu.Books.Where(b => b.Number == SelectedBookChapter.SelectedBook).FirstOrDefault().Chapters.Max(c => c.Number);
+        var currentBook = bibleMenu?.Books.Where(b => b.Number == SelectedBookChapter.SelectedBook).FirstOrDefault();
+        if (currentBook == null)
+            return;
+        int lastChapter = currentBook.Chapters.Max(c => c.Number);
 
         if (SelectedBookChapter.SelectedChapter != lastChapter)
         {
@@ -306,7 +334,9 @@
             await SetBibleMenu();
 
         SelectedBookChapter.SelectedChapter = chapter.Number;
-        var selectedBook = bibleMenu.Books.FirstOrDefault(b => b.Number == SelectedBookChapter.SelectedBook);
+        var selectedBook = bibleMenu?.Books.FirstOrDefault(b => b.Number == SelectedBookChapter.SelectedBook);
+        if (selectedBook == null)
+            return;
         var selectedBookName = selectedBook.Name;
         var selectedBookRef = $"#{selectedBookName.Replace(" ", "_")}";
         chapterText = $"{selectedBook.Name} {SelectedBookChapter.SelectedChapter}";
@@ -328,8 +358,11 @@
         if (bibleMenu == null)
             await SetBibleMenu();
 
-        var audioURL = bibleMenu.Books.Where(b => b.Number == SelectedBookChapter.SelectedBook).FirstOrDefault().Chapters.Where(c => c.Number == SelectedBookChapter.SelectedChapter).FirstOrDefault().AudioUrl;
-        await SelectChapter(new BiblePlaylist.Shared.Navigation.NavChapter() { Number = SelectedBookChapter.SelectedChapter, AudioUrl = audioURL }, false);
+        var book = bibleMenu?.Books.FirstOrDefault(b => b.Number == SelectedBookChapter.SelectedBook);
+        var chapter = book?.Chapters.FirstOrDefault(c => c.Number == SelectedBookChapter.SelectedChapter);
+        if (chapter == null)
+            return;
+        await SelectChapter(new BiblePlaylist.Shared.Navigation.NavChapter() { Number = SelectedBookChapter.SelectedChapter, AudioUrl = chapter.AudioUrl }, false);
     }
 
     private async Task AutoplayChanged(bool newState)
@@ -347,7 +380,9 @@
     private async Task SetBibleMenu()
     {
         var lastReadResponse = await Http.GetAsync($"BibleMenu?key={BiblePlaylist.Shared.Structs.BibleMenu.Name}");
-        bibleMenu = await lastReadResponse.Content.ReadFromJsonAsync<BiblePlaylist.Shared.Navigation.BibleMenu>();
+        var menu = await lastReadResponse.Content.ReadFromJsonAsync<BiblePlaylist.Shared.Navigation.BibleMenu>();
+        if (menu != null)
+            bibleMenu = menu;
     }
 
     [JSInvokable]

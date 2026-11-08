@@ -26,7 +26,7 @@
 @code {
     bool _drawerOpen = true;
     protected string fullAppVersion => Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()!.InformationalVersion;
-    protected string appVersion;
+    protected string appVersion = string.Empty;
 
     protected override void OnInitialized()
     {

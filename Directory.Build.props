@@ -1,0 +1,9 @@
+<Project>
+  <!-- Issue #33: all compiler warnings are errors solution-wide.
+       Any warning that cannot be fixed must be addressed explicitly
+       (fix or a documented NoWarn with justification), never by
+       lowering this back to warnings. -->
+  <PropertyGroup>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+</Project>

@@ -119,7 +119,7 @@
             foreach (var chapter in book.Chapters)
             {
                 var audioURL = chapter?.AudioUrl;
-                chapterAudioDownloadStatus = audioURL;
+                chapterAudioDownloadStatus = audioURL ?? string.Empty;
                 await InvokeAsync(StateHasChanged);
                 var fileName = audioURL?.Replace("https://feeds.bible.org/netaudio/", "");
 
@@ -164,8 +164,11 @@
         {
             foreach (var chapter in book.Chapters)
             {
+                if (chapter is null)
+                    continue;
+
                 var audioURL = chapter?.AudioUrl;
-                audioUpdateStatus = audioURL;
+                audioUpdateStatus = audioURL ?? string.Empty;
                 await InvokeAsync(StateHasChanged);               
 
                 if (string.IsNullOrEmpty(audioURL))
@@ -176,9 +179,9 @@
                 }
 
                 audioURL = audioURL?.Replace("https://feeds.bible.org/netaudio/", "");
-                audioUpdateStatus = audioURL;
+                audioUpdateStatus = audioURL ?? string.Empty;
                 await InvokeAsync(StateHasChanged);
-                chapter.AudioUrl = audioURL;
+                chapter!.AudioUrl = audioURL;
             }
         }
         audioUpdateStatus = "Update version";
@@ -205,11 +208,14 @@
         {
             foreach (var chapter in book.Chapters.Where(c => c.Number < 100))
             {
+                if (chapter is null)
+                    continue;
+
                 var audioURL = chapter?.AudioUrl;
-                psalmAudioUpdateStatus = audioURL;
+                psalmAudioUpdateStatus = audioURL ?? string.Empty;
                 await InvokeAsync(StateHasChanged);               
 
-                string fileName = $"{book.PaddedNumber}-{book.Name.Replace(" ", "")}-0{chapter.PaddedNumber}.mp3";
+                string fileName = $"{book.PaddedNumber}-{book.Name.Replace(" ", "")}-0{chapter!.PaddedNumber}.mp3";
 
                 if (string.IsNullOrEmpty(fileName))
                 {
@@ -259,7 +265,7 @@
 
                 var localBook = new BiblePlaylist.Shared.Bible.Book() { Number = book.Number, Name = book.Name };
                 localBook.Chapters = new List<BiblePlaylist.Shared.Bible.Chapter>() { new BiblePlaylist.Shared.Bible.Chapter() { Number = chapter.Number, AudioUrl = chapter.AudioUrl } };
-                localBook.Chapters.FirstOrDefault().Verses = chapter.Verses;
+                localBook.Chapters.First().Verses = chapter.Verses;
                 var partialVersion = new BiblePlaylist.Shared.Bible.Version() { Code = BiblePlaylist.Shared.Structs.Version.NET, Books = new List<BiblePlaylist.Shared.Bible.Book>() { localBook } };
                var response = await Http.PostAsJsonAsync("Version/parseverseaudio", partialVersion);
                if (response.IsSuccessStatusCode)
@@ -278,7 +284,7 @@
         await InvokeAsync(StateHasChanged);
     }
 
-    public async Task<byte[]> DownloadAudioAsync(string fileName)
+    public async Task<byte[]?> DownloadAudioAsync(string fileName)
     {
         try
         {            

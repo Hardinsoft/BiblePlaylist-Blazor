@@ -27,7 +27,7 @@ namespace BiblePlaylist.Tests
 {
     public class RecordingJSRuntime : IJSRuntime
     {
-        public List<(string Method, object[] Args)> Invocations { get; } = new();
+        public List<(string Method, object?[] Args)> Invocations { get; } = new();
 
         public ValueTask<T> InvokeAsync<T>(string identifier, object?[]? args)
         {
@@ -182,7 +182,7 @@ namespace BiblePlaylist.Tests
         }
 
         private IRenderedComponent<BiblePlaylist.Client.Pages.SegmentEditor> RenderEditor(int book, int chapter,
-            string playlist = null, int? segmentStart = null, int? segmentEnd = null, string libraryCode = "test-library")
+            string? playlist = null, int? segmentStart = null, int? segmentEnd = null, string libraryCode = "test-library")
         {
             var ps = new List<ComponentParameter>
             {
@@ -271,15 +271,15 @@ namespace BiblePlaylist.Tests
 
             Assert.Contains(JSRuntime.Invocations,
                 i => i.Method == "initializeAudioPlayer" &&
-                     i.Args.Length >= 1 && i.Args[0].ToString() == "segmentEditorAudioPlayer");
+                     i.Args.Length >= 1 && i.Args[0]?.ToString() == "segmentEditorAudioPlayer");
             Assert.Contains(JSRuntime.Invocations,
                 i => i.Method == "loadAudioFile" &&
-                     i.Args.Length >= 2 && i.Args[0].ToString() == "segmentEditorAudioPlayer" &&
-                     i.Args[1].ToString() == "segmentEditorAudioPlayerSource");
+                     i.Args.Length >= 2 && i.Args[0]?.ToString() == "segmentEditorAudioPlayer" &&
+                     i.Args[1]?.ToString() == "segmentEditorAudioPlayerSource");
             Assert.Contains(JSRuntime.Invocations,
                 i => i.Method == "PlayAudioSegment" &&
-                     i.Args.Length >= 2 && i.Args[0].ToString() == "segmentEditorAudioPlayer" &&
-                     i.Args[1].ToString() == "segmentEditorAudioPlayerSource");
+                     i.Args.Length >= 2 && i.Args[0]?.ToString() == "segmentEditorAudioPlayer" &&
+                     i.Args[1]?.ToString() == "segmentEditorAudioPlayerSource");
         }
 
         [Fact]
@@ -525,7 +525,7 @@ namespace BiblePlaylist.Tests
 
             Assert.NotNull(putRequest);
 
-            var putBody = await putRequest.Content.ReadAsStringAsync(Xunit.TestContext.Current.CancellationToken);
+            var putBody = await putRequest!.Content!.ReadAsStringAsync(Xunit.TestContext.Current.CancellationToken);
             // Verses may appear as null (client uses System.Text.Json which doesn't
             // see Newtonsoft's [JsonIgnore]), but the key requirement is NO verse DATA:
             Assert.DoesNotContain("[{\"number\"", putBody);   // no verse array

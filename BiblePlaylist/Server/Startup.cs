@@ -55,7 +55,6 @@ namespace BiblePlaylist.Server
             var endpointsSection = Configuration.GetSection(ConfigurationSections.Endpoints);
 
             services.AddSingleton<IHttpContextAccessor, HttpContextAccessor>();
-            services.AddSingleton<IActionContextAccessor, ActionContextAccessor>();
             services.AddSingleton<ICache, Cache>();
 
             services.Configure<Configuration.Endpoints>(endpointsSection);

@@ -19,14 +19,14 @@
 </MudPaper>
 
 @code {
-    private Library Library { get; set; }
-    private Playlist selectedPlaylist { get; set; }
+    private Library? Library { get; set; }
+    private Playlist? selectedPlaylist { get; set; }
     [Parameter]
-    public string PlaylistName { get; set; }
+    public string PlaylistName { get; set; } = null!;
     protected override async Task OnParametersSetAsync()
     {
         await base.OnParametersSetAsync();
-        selectedPlaylist = Library.Playlists.FirstOrDefault(pl => pl.Name == PlaylistName);
+        selectedPlaylist = Library?.Playlists.FirstOrDefault(pl => pl.Name == PlaylistName);
         await InvokeAsync(StateHasChanged);
               
     }

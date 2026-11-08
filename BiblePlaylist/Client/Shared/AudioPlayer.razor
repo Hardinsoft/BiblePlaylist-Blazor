@@ -44,41 +44,46 @@
     {
         <MudStack Row Justify="Justify.Center" Spacing="3" Class="mt-1">
             <div class="d-flex align-left">
-                <MudFab Disabled="@LoadingTrack" StartIcon="@Icons.Material.Filled.ChevronLeft"
-                        Color="@Color.Dark"
-                        Size="Size.Small"
-                        @onclick="OnPrevious"
-                        Title="Previous segment" />
+                <MudTooltip Text="Previous segment">
+                    <MudFab Disabled="@LoadingTrack" StartIcon="@Icons.Material.Filled.ChevronLeft"
+                            Color="@Color.Dark"
+                            Size="Size.Small"
+                            @onclick="OnPrevious" />
+                </MudTooltip>
             </div>
             <div class="d-flex align-center">
-                <MudToggleIconButton Toggled="@Autoplay"
-                                     ToggledChanged="SetAutoplay"
-                                     Icon="@Icons.Material.Filled.Autorenew"
-                                     ToggledIcon="@Icons.Material.Filled.Autorenew"
-                                     Color="Color.Default"
-                                     ToggledColor="Color.Primary"
-                                     Size="Size.Small"
-                                     Title="Autoplay next segment" />
+                <MudTooltip Text="Autoplay next segment">
+                    <MudToggleIconButton Toggled="@Autoplay"
+                                         ToggledChanged="SetAutoplay"
+                                         Icon="@Icons.Material.Filled.Autorenew"
+                                         ToggledIcon="@Icons.Material.Filled.Autorenew"
+                                         Color="Color.Default"
+                                         ToggledColor="Color.Primary"
+                                         Size="Size.Small" />
+                </MudTooltip>
                 <MudText Typo="Typo.caption" Class="ml-1">Autoplay</MudText>
             </div>
 
             <div class="d-flex align-center">
-                <MudToggleIconButton Toggled="@Repeat"
-                                     ToggledChanged="SetRepeat"
-                                     Icon="@Icons.Material.Filled.Repeat"
-                                     ToggledIcon="@Icons.Material.Filled.RepeatOn"
-                                     Color="Color.Default"
-                                     ToggledColor="Color.Primary"
-                                     Size="Size.Small"
-                                     Title="Repeat current segment" />
+                <MudTooltip Text="Repeat current segment">
+                    <MudToggleIconButton Toggled="@Repeat"
+                                         ToggledChanged="SetRepeat"
+                                         Icon="@Icons.Material.Filled.Repeat"
+                                         ToggledIcon="@Icons.Material.Filled.RepeatOn"
+                                         Color="Color.Default"
+                                         ToggledColor="Color.Primary"
+                                         Size="Size.Small" />
+                </MudTooltip>
                 <MudText Typo="Typo.caption" Class="ml-1">Repeat</MudText>
             </div>
             <div class="d-flex align-right">
-                <MudFab Disabled="@LoadingTrack" StartIcon="@Icons.Material.Filled.ChevronRight"
-                        Color="@Color.Dark"
-                        Size="Size.Small"
-                        @onclick="OnNext"
-                        Title="Next segment" />
+                <MudTooltip Text="Next segment">
+                    <MudFab Disabled="@LoadingTrack" StartIcon="@Icons.Material.Filled.ChevronRight"
+                            Color="@Color.Dark"
+                            Size="Size.Small"
+                            aria-label="Next segment"
+                            @onclick="OnNext" />
+                </MudTooltip>
             </div>
         </MudStack>
     }
@@ -141,11 +146,11 @@
     [Parameter]
     public EventCallback OnPlay { get; set; }
 
-    private string _lastSourceUrl;
+    private string _lastSourceUrl = string.Empty;
     private decimal? _lastSegmentStart;
     private decimal? _lastSegmentEnd;
 
-    private DotNetObjectReference<AudioPlayer> _dotNetRef;
+    private DotNetObjectReference<AudioPlayer>? _dotNetRef;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -189,9 +194,7 @@
     {
         if (string.IsNullOrWhiteSpace(SourceUrl)) return;
 
-        bool isSegment = SegmentStart.HasValue && SegmentEnd.HasValue;
-
-        if (isSegment)
+        if (SegmentStart.HasValue && SegmentEnd.HasValue)
         {
             await JSRuntime.InvokeVoidAsync("PlayAudioSegment",
                 PlayerId,

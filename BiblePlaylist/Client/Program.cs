@@ -27,7 +27,8 @@ namespace BiblePlaylist.Client
 
             services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) });
             services.AddScoped<IDelegateLibrary, DelegateLibrary>();            
-            services.AddScoped(sp => sp.GetRequiredService<IConfiguration>().GetSection("Endpoints").Get<Endpoints>());
+            services.AddScoped(sp => sp.GetRequiredService<IConfiguration>().GetSection("Endpoints").Get<Endpoints>()
+                ?? throw new InvalidOperationException("The 'Endpoints' configuration section is missing."));
             services.AddBlazoredLocalStorage();
             services.AddMudServices();
 
