@@ -129,8 +129,7 @@
     [Parameter] [SupplyParameterFromQuery] public int Chapter { get; set; }
     [Parameter] [SupplyParameterFromQuery] public string? Playlist { get; set; }
     [Parameter] [SupplyParameterFromQuery(Name = "library")] public string? LibraryCode { get; set; }
-    [Parameter] [SupplyParameterFromQuery] public int SegmentStart { get; set; }
-    [Parameter] [SupplyParameterFromQuery] public int SegmentEnd { get; set; }
+    [Parameter] [SupplyParameterFromQuery] public int SegmentId { get; set; }
 
     private decimal _segmentStartAudio;
     private decimal _segmentEndAudio;
@@ -141,7 +140,7 @@
 
     protected override async Task OnInitializedAsync()
     {
-        Mode = (SegmentStart != 0 && SegmentEnd != 0) ? SegmentMode.Edit : SegmentMode.Create;
+        Mode = SegmentId != 0 ? SegmentMode.Edit : SegmentMode.Create;
         _selectedVerseNumbers = new HashSet<int>();
         await LoadChapterAsync();
         isInitialized = true;
@@ -216,6 +215,10 @@
             var library = Newtonsoft.Json.JsonConvert.DeserializeObject<BiblePlaylist.Shared.Data.Library>(libResponse);
             if (library == null) return;
 
+            // #25: retrofit Ids for segments saved before Id existed, so the
+            // lookup below always has a stable identity to match on.
+            library.EnsureSegmentIds();
+
             var playlist = library.Playlists?.FirstOrDefault(p => p.Key == Playlist);
             if (playlist == null) return;
 
@@ -225,7 +228,7 @@
             if (bookChapter?.Segments == null) return;
 
             var segment = bookChapter.Segments
-                .FirstOrDefault(s => s.VerseStart == SegmentStart && s.VerseEnd == SegmentEnd);
+                .FirstOrDefault(s => s.Id == SegmentId);
 
             if (segment != null)
             {
@@ -475,6 +478,11 @@
                 return;
             }
 
+
+            // #25: retrofit Ids for segments saved before Id existed, so the
+            // lookup below matches the same Ids the editor loaded with.
+            library.EnsureSegmentIds();
+
             var playlist = library.Playlists?.FirstOrDefault(p => p.Key == Playlist);
             if (playlist == null)
             {
@@ -493,27 +501,26 @@
 
             if (Mode == SegmentMode.Edit)
             {
+                // #25: identify the segment being edited by its stable Id
+                // from the URL. Overlap between segments is allowed (Greg,
+                // 2026-11-08), so a new range matching another segment is
+                // fine — the Id is what identifies this segment.
                 var existing = bookChapter.Segments?
-                    .FirstOrDefault(s => s.VerseStart == segment.VerseStart && s.VerseEnd == segment.VerseEnd);
-                // If the range changed, find by the old range from the URL parameters
+                    .FirstOrDefault(s => s.Id == SegmentId);
+
                 if (existing == null)
                 {
-                    existing = bookChapter.Segments?
-                        .FirstOrDefault(s => s.VerseStart == SegmentStart && s.VerseEnd == SegmentEnd);
+                    Snackbar.Add("Original segment not found — it may have been deleted.", Severity.Error);
+                    return;
                 }
 
-                if (existing != null && bookChapter.Segments != null)
+                if (bookChapter.Segments != null)
                 {
+                    // Keep the stable Id on the replacement.
+                    segment.Id = existing.Id;
                     var idx = bookChapter.Segments.IndexOf(existing);
                     if (idx >= 0)
                         bookChapter.Segments[idx] = segment;
-                }
-                else
-                {
-                    // Edge case: segment not found by range — add as new
-                    if (bookChapter.Segments == null)
-                        bookChapter.Segments = new List<Segment>();
-                    bookChapter.Segments.Add(segment);
                 }
             }
             else // Create mode
@@ -521,6 +528,8 @@
                 if (bookChapter.Segments == null)
                     bookChapter.Segments = new List<Segment>();
                 bookChapter.Segments.Add(segment);
+                // New segment gets the next Id in this chapter.
+                Segment.EnsureIds(bookChapter.Segments);
             }
 
             // Verses are stripped server-side by Newtonsoft's [JsonIgnore] on
@@ -536,7 +545,7 @@
             }
 
             Snackbar.Add($"Segment {segment.VerseStart}-{segment.VerseEnd} saved.", Severity.Success);
-            NavManager.NavigateTo(BuildReturnUrl(segment.VerseStart, segment.VerseEnd));
+            NavManager.NavigateTo(BuildReturnUrl(segment.Id));
         }
         catch (Exception ex)
         {
@@ -547,17 +556,17 @@
 
     private void CancelEdit()
     {
-        NavManager.NavigateTo(BuildReturnUrl(SegmentStart, SegmentEnd));
+        NavManager.NavigateTo(BuildReturnUrl(SegmentId));
     }
 
-    private string BuildReturnUrl(int segmentStart, int segmentEnd)
+    private string BuildReturnUrl(int segmentId)
     {
         // No playlist supplied (e.g. Create with no playlist open): plain playlist list.
         if (string.IsNullOrEmpty(Playlist))
             return "/playlists";
         var query = $"playlist={System.Net.WebUtility.UrlEncode(Playlist)}&library={System.Net.WebUtility.UrlEncode(LibraryCode ?? string.Empty)}&book={Book}&chapter={Chapter}";
-        if (segmentStart > 0 && segmentEnd > 0)
-            query += $"&segmentStart={segmentStart}&segmentEnd={segmentEnd}";
+        if (segmentId > 0)
+            query += $"&segmentId={segmentId}";
         return $"/playlists?{query}";
     }
 

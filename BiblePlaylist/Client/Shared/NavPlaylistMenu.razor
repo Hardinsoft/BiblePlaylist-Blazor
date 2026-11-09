@@ -436,11 +436,10 @@
 
         _returnTargetSegment = null;
         if (_expandedChapter != null
-            && int.TryParse(GetQueryValue("segmentStart"), out int segmentStart)
-            && int.TryParse(GetQueryValue("segmentEnd"), out int segmentEnd)
-            && segmentStart > 0 && segmentEnd > 0)
+            && int.TryParse(GetQueryValue("segmentId"), out int segmentId)
+            && segmentId > 0)
         {
-            _returnTargetSegment = _expandedChapter.Segments?.FirstOrDefault(s => s.VerseStart == segmentStart && s.VerseEnd == segmentEnd);
+            _returnTargetSegment = _expandedChapter.Segments?.FirstOrDefault(s => s.Id == segmentId);
         }
 
         _currentSegmentIndex = -1;
@@ -484,6 +483,9 @@
 
         string libraryResponse = await Http.GetStringAsync("library?key=library_greg_hardin_live_com");
         Library = JsonConvert.DeserializeObject<Library>(libraryResponse) ?? new Library();
+        // #25: retrofit Ids for segments saved before Id existed, so the
+        // edit links below carry a stable identity.
+        Library.EnsureSegmentIds();
         delegateLibrary.HasPlayedChanged += (o, e) => OnHasPlayedChanged(e.Value);
 
     }
@@ -896,7 +898,7 @@
     {
         var playlistKey = GetPlaylistKey();
         var libraryCode = Library?.Code ?? string.Empty;
-        var query = $"library={System.Net.WebUtility.UrlEncode(libraryCode)}&book={chapter.BookNumber}&chapter={chapter.ChapterNumber}&playlist={System.Net.WebUtility.UrlEncode(playlistKey)}&segmentStart={segment.VerseStart}&segmentEnd={segment.VerseEnd}";
+        var query = $"library={System.Net.WebUtility.UrlEncode(libraryCode)}&book={chapter.BookNumber}&chapter={chapter.ChapterNumber}&playlist={System.Net.WebUtility.UrlEncode(playlistKey)}&segmentId={segment.Id}";
         NavManager.NavigateTo($"/edit-segment?{query}");
     }
 

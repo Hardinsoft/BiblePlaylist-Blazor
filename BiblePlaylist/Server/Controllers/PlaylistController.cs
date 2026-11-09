@@ -74,6 +74,7 @@ namespace BiblePlaylist.Server.Controllers
 
                     return new Segment
                     {
+                        Id = seg.Id,
                         Verses = filteredVerses,
                         VerseStart = seg.VerseStart,
                         VerseEnd = seg.VerseEnd,
