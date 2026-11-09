@@ -186,7 +186,7 @@ namespace BiblePlaylist.Tests
         }
 
         private IRenderedComponent<BiblePlaylist.Client.Pages.SegmentEditor> RenderEditor(int book, int chapter,
-            string? playlist = null, int? segmentId = null, string libraryCode = "test-library")
+            string? playlist = null, int? segmentId = null, int? selectStart = null, int? selectEnd = null, string libraryCode = "test-library")
         {
             var ps = new List<ComponentParameter>
             {
@@ -201,6 +201,11 @@ namespace BiblePlaylist.Tests
             if (segmentId.HasValue)
             {
                 ps.Add(ComponentParameter.CreateParameter("SegmentId", segmentId.Value));
+            }
+            if (selectStart.HasValue && selectEnd.HasValue)
+            {
+                ps.Add(ComponentParameter.CreateParameter("SelectStart", selectStart.Value));
+                ps.Add(ComponentParameter.CreateParameter("SelectEnd", selectEnd.Value));
             }
             return RenderComponent<BiblePlaylist.Client.Pages.SegmentEditor>(ps.ToArray());
         }
@@ -703,6 +708,93 @@ namespace BiblePlaylist.Tests
             Assert.Equal(2, saved[1].Id);
             Assert.Equal(1, saved[1].VerseStart);
             Assert.Equal(5, saved[1].VerseEnd);
+        }
+
+        private async Task<Library?> GetSavedLibrary()
+        {
+            var putRequest = HttpHandler.Requests.FirstOrDefault(req =>
+                req.Method == HttpMethod.Put &&
+                req.RequestUri?.AbsoluteUri.Contains("library") == true);
+            if (putRequest?.Content == null) return null;
+
+            var putBody = await putRequest.Content.ReadAsStringAsync(Xunit.TestContext.Current.CancellationToken);
+            return JsonConvert.DeserializeObject<Library>(putBody);
+        }
+
+        /// <summary>
+        /// #37: a pre-selected range from the Read page (selectStart/selectEnd)
+        /// fills the editor's selection in Create mode.
+        /// </summary>
+        [Fact]
+        public async Task Editor_CreateMode_Preselection_FillsSelection()
+        {
+            SetupVersionResponse(1, 5);
+
+            var cut = RenderEditor(1, 5, "test-playlist", selectStart: 1, selectEnd: 3);
+            await cut.InvokeAsync(() => Task.Delay(50));
+
+            Assert.Contains("1-3 (3 verses)", cut.Markup);
+        }
+
+        /// <summary>
+        /// #37: a pre-selected range outside the chapter leaves the selection
+        /// empty — the editor behaves as if nothing was pre-selected.
+        /// </summary>
+        [Fact]
+        public async Task Editor_CreateMode_PreselectionOutOfRange_LeavesSelectionEmpty()
+        {
+            SetupVersionResponse(1, 5);
+
+            var cut = RenderEditor(1, 5, "test-playlist", selectStart: 9, selectEnd: 12);
+            await cut.InvokeAsync(() => Task.Delay(50));
+
+            Assert.Contains("Select verses to create a new segment", cut.Markup);
+        }
+
+        /// <summary>
+        /// #37: saving a segment for a chapter that is not in the playlist
+        /// creates the chapter (appended at the end) and the segment in it,
+        /// with Id 1; the existing chapter is untouched.
+        /// </summary>
+        [Fact]
+        public async Task Editor_CreateMode_SaveNewChapter_CreatesBookChapter()
+        {
+            SetupVersionResponse(1, 5);
+            SetupLibraryResponse("test-playlist", 1, 1, new List<Segment>
+            {
+                new Segment { Id = 1, VerseStart = 1, VerseEnd = 2 }
+            });
+            HttpHandler.SetupPut("library");
+
+            var cut = RenderEditor(1, 5, "test-playlist");
+            await cut.InvokeAsync(() => Task.Delay(50));
+
+            SetSelectedVerses(cut, new[] { 1, 2, 3 });
+            await ClickSave(cut);
+
+            var savedLibrary = await GetSavedLibrary();
+            Assert.NotNull(savedLibrary);
+            var chapters = savedLibrary!.Playlists?.FirstOrDefault()?.BookChapters?.ToList();
+            Assert.NotNull(chapters);
+            Assert.Equal(2, chapters!.Count);
+
+            // Existing chapter untouched.
+            Assert.Equal(1, chapters[0].BookNumber);
+            Assert.Equal(1, chapters[0].ChapterNumber);
+            Assert.Single(chapters[0].Segments!);
+            Assert.Equal(1, chapters[0].Segments![0].Id);
+
+            // New chapter appended, built from the loaded chapter data.
+            var newChapter = chapters[1];
+            Assert.Equal(1, newChapter.BookNumber);
+            Assert.Equal(5, newChapter.ChapterNumber);
+            Assert.Equal("Test Book", newChapter.BookName);
+            Assert.Equal("http://example.com/chapter.mp3", newChapter.ChapterAudioUrl);
+            Assert.Equal("NET", newChapter.VersionCode);
+            Assert.Single(newChapter.Segments!);
+            Assert.Equal(1, newChapter.Segments![0].Id);
+            Assert.Equal(1, newChapter.Segments[0].VerseStart);
+            Assert.Equal(3, newChapter.Segments[0].VerseEnd);
         }
 
         /// <summary>

@@ -153,6 +153,10 @@
                                                                 </MudPaper>
                                                             }
                                                         }
+                                                        @* #37: create a segment in this chapter. *@
+                                                        <MudButton Variant="Variant.Text" Color="Color.Primary"
+                                                                   StartIcon="@Icons.Material.Filled.Add"
+                                                                   OnClick="() => NavigateToCreate(context)" Class="mt-1">Add segment</MudButton>
                                                     </ChildContent>
                                                 </MudExpansionPanel>
                                             </ItemRenderer>
@@ -892,6 +896,14 @@
         return Library?.Playlists?.FirstOrDefault(p => p.Name == selectedPlaylist?.Name)?.Key
                ?? selectedPlaylist?.Key
                ?? string.Empty;
+    }
+
+    private void NavigateToCreate(BookChapter chapter)
+    {
+        var playlistKey = GetPlaylistKey();
+        var libraryCode = Library?.Code ?? string.Empty;
+        var query = $"library={System.Net.WebUtility.UrlEncode(libraryCode)}&book={chapter.BookNumber}&chapter={chapter.ChapterNumber}&playlist={System.Net.WebUtility.UrlEncode(playlistKey)}";
+        NavManager.NavigateTo($"/edit-segment?{query}");
     }
 
     private void NavigateToEdit(BookChapter chapter, Segment segment)

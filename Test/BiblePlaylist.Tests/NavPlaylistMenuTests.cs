@@ -263,5 +263,30 @@ namespace BiblePlaylist.Tests
             }
             finally { StopTimer(cut); }
         }
+
+        /// <summary>
+        /// #37: the per-chapter "Add segment" button opens the editor in
+        /// Create mode for that chapter — no segmentId in the URL.
+        /// </summary>
+        [Fact]
+        public void Chapter_AddSegment_NavigatesToEditorCreateMode()
+        {
+            var cut = RenderReturnMenu();
+            try
+            {
+                var addButton = cut.FindAll("button")
+                    .FirstOrDefault(b => b.TextContent.Contains("Add segment"));
+                Assert.NotNull(addButton);
+                addButton!.Click();
+
+                var uri = Services.GetRequiredService<NavigationManager>().Uri;
+                Assert.Contains("/edit-segment?", uri);
+                Assert.Contains("book=43", uri);
+                Assert.Contains("chapter=1", uri);
+                Assert.Contains("playlist=test-key", uri);
+                Assert.DoesNotContain("segmentId", uri);
+            }
+            finally { StopTimer(cut); }
+        }
     }
 }
