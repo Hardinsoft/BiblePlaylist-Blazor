@@ -26,9 +26,9 @@ namespace BiblePlaylist.Tests
     /// (double-click to jump; single-click only within the playing segment).
     /// Renders NavPlaylistMenu on a return URL:
     /// /playlists?playlist=test-key&library=...&book=43&chapter=1
-    ///   &segmentStart=3&segmentEnd=4
-    /// so the pending return segment is the second segment (verses 3-4) of
-    /// John chapter 1, and the other segment is verses 1-2.
+    ///   &segmentId=2
+    /// so the pending return segment is the second segment (Id 2, verses 3-4)
+    /// of John chapter 1, and the other segment is verses 1-2.
     /// </summary>
     public class NavPlaylistMenuTests : Bunit.TestContext
     {
@@ -52,10 +52,11 @@ namespace BiblePlaylist.Tests
             Services.AddSingleton(httpClient);
         }
 
-        private static Segment SegmentWithVerses(int start, int end)
+        private static Segment SegmentWithVerses(int id, int start, int end)
         {
             return new Segment
             {
+                Id = id,
                 VerseStart = start,
                 VerseEnd = end,
                 Verses = Enumerable.Range(start, end - start + 1)
@@ -73,11 +74,11 @@ namespace BiblePlaylist.Tests
         private static BookChapter ChapterWithSegments(bool inflated)
         {
             var segments = inflated
-                ? new List<Segment> { SegmentWithVerses(1, 2), SegmentWithVerses(3, 4) }
+                ? new List<Segment> { SegmentWithVerses(1, 1, 2), SegmentWithVerses(2, 3, 4) }
                 : new List<Segment>
                 {
-                    new Segment { VerseStart = 1, VerseEnd = 2 },
-                    new Segment { VerseStart = 3, VerseEnd = 4 }
+                    new Segment { Id = 1, VerseStart = 1, VerseEnd = 2 },
+                    new Segment { Id = 2, VerseStart = 3, VerseEnd = 4 }
                 };
             return new BookChapter
             {
@@ -113,7 +114,7 @@ namespace BiblePlaylist.Tests
                 System.Text.Json.JsonSerializer.Serialize(new List<BookChapter> { ChapterWithSegments(inflated: true) }));
 
             Services.GetRequiredService<NavigationManager>().NavigateTo(
-                "http://localhost/playlists?playlist=test-key&library=library_greg_hardin_live_com&book=43&chapter=1&segmentStart=3&segmentEnd=4");
+                "http://localhost/playlists?playlist=test-key&library=library_greg_hardin_live_com&book=43&chapter=1&segmentId=2");
 
             var cut = RenderComponent<BiblePlaylist.Client.Shared.NavPlaylistMenu>();
             // Return handling is async (library GET, then inflate POST).
