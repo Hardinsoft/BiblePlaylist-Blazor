@@ -131,6 +131,12 @@
                                                                 <MudPaper Class="@($"pa-2 mb-2 {(IsCurrentSegment(context, segment) ? "current-segment mud-elevation-1" : "")}")"
                                                                           Style="border-radius: 4px; cursor: pointer;"
                                                                           @ondblclick="@(() => JumpToSegmentOnDoubleClick(context, segment))">
+                                                                    @* #39: the intro text is the segment card's
+                                                                       heading; the verse rows below are unchanged. *@
+                                                                    @if (!string.IsNullOrWhiteSpace(segment.IntroText))
+                                                                    {
+                                                                        <MudText Typo="Typo.subtitle1" Class="mb-1 font-weight-medium">@segment.IntroText</MudText>
+                                                                    }
                                                                     <div class="d-flex justify-content-between verse-container">
                                                                         <div class="verse-list">
                                                                             @foreach (var verse in segment.Verses)
@@ -704,6 +710,15 @@
             if (isFirstSegment && !string.IsNullOrWhiteSpace(selectedPlaylist?.Description))
             {
                 textsToSpeak.Add(selectedPlaylist.Description);
+            }
+
+            // #39: the intro text is spoken first among the segment's own
+            // announcements — after the playlist Description (playlist-level,
+            // spoken once for the first segment), before the chapter and
+            // verse announcements.
+            if (!string.IsNullOrWhiteSpace(segment?.IntroText))
+            {
+                textsToSpeak.Add(segment.IntroText);
             }
 
             if (!string.IsNullOrWhiteSpace(chapter?.VoiceText))

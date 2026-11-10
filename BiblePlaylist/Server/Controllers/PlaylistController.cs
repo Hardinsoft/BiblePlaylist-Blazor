@@ -78,6 +78,10 @@ namespace BiblePlaylist.Server.Controllers
                         Verses = filteredVerses,
                         VerseStart = seg.VerseStart,
                         VerseEnd = seg.VerseEnd,
+                        // #39: the intro text is segment data, not verse data —
+                        // the menu plays from inflated segments, so it must
+                        // survive inflate or the heading/TTS intro would vanish.
+                        IntroText = seg.IntroText,
                         // VoiceText = ... if you compute it here or leave as-is
                     };
                 }).ToList();

@@ -1,6 +1,7 @@
 using BiblePlaylist.Shared.Bible;
 using BiblePlaylist.Shared.Data;
 using BiblePlaylist.Shared.DTO;
+using BiblePlaylist.Shared.ExtensionMethods;
 using BiblePlaylist.Shared.Playlist;
 using BiblePlaylist.Client.Config;
 using BiblePlaylist.Client.Events;
@@ -9,6 +10,7 @@ using Blazored.LocalStorage;
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.JSInterop;
+using MudBlazor;
 using MudBlazor.Services;
 using Newtonsoft.Json;
 using System;
@@ -917,6 +919,356 @@ namespace BiblePlaylist.Tests
             Assert.DoesNotContain("audioStart", putBody);     // no audio timing
             Assert.Contains("verseStart", putBody);           // segment range preserved
             Assert.Contains("verseEnd", putBody);
+        }
+
+        // #39 helpers: the intro text field is the editor's only <input>.
+        private void SetIntroText(IRenderedComponent<BiblePlaylist.Client.Pages.SegmentEditor> cut, string? text)
+        {
+            var field = typeof(BiblePlaylist.Client.Pages.SegmentEditor)
+                .GetField("_introText", BindingFlags.NonPublic | BindingFlags.Instance);
+            field?.SetValue(cut.Instance, text);
+            _ = cut.InvokeAsync(() => { });
+        }
+
+        private string? GetIntroFieldValue(IRenderedComponent<BiblePlaylist.Client.Pages.SegmentEditor> cut)
+        {
+            return cut.Find("input").GetAttribute("value");
+        }
+
+        private void SetupBibleMenuResponse()
+        {
+            var menu = new BiblePlaylist.Shared.Navigation.BibleMenu
+            {
+                Books = new List<BiblePlaylist.Shared.Navigation.NavBook>
+                {
+                    new BiblePlaylist.Shared.Navigation.NavBook
+                    {
+                        Number = 1,
+                        Name = "Test Book",
+                        Chapters = Enumerable.Range(1, 5)
+                            .Select(n => new BiblePlaylist.Shared.Navigation.NavChapter { Number = n })
+                            .ToList()
+                    },
+                    new BiblePlaylist.Shared.Navigation.NavBook
+                    {
+                        Number = 43,
+                        Name = "John",
+                        Chapters = Enumerable.Range(1, 3)
+                            .Select(n => new BiblePlaylist.Shared.Navigation.NavChapter { Number = n })
+                            .ToList()
+                    }
+                }
+            };
+            HttpHandler.SetupGet("BibleMenu?key=", JsonConvert.SerializeObject(menu));
+        }
+
+        private static void ClickDialogButton(IRenderedComponent<MudDialogProvider> provider, string text)
+        {
+            provider.FindAll("button").First(b => b.TextContent.Contains(text)).Click();
+        }
+
+        private async Task ClickChangeChapter(IRenderedComponent<BiblePlaylist.Client.Pages.SegmentEditor> cut)
+        {
+            await cut.InvokeAsync(() =>
+            {
+                cut.FindAll("button").First(b => b.TextContent.Contains("Change chapter")).Click();
+            });
+            cut.WaitForAssertion(() => Assert.Contains("John", cut.Markup), TimeSpan.FromSeconds(5));
+        }
+
+        private async Task PickChapterInPicker(IRenderedComponent<BiblePlaylist.Client.Pages.SegmentEditor> cut, string bookName, int chapterNumber)
+        {
+            await cut.InvokeAsync(() =>
+            {
+                cut.FindAll(".mud-list-item").First(e => e.TextContent.Contains(bookName)).Click();
+            });
+            await cut.InvokeAsync(() =>
+            {
+                cut.FindAll(".mud-paper.py-4").First(e => e.TextContent.Trim() == chapterNumber.ToString()).Click();
+            });
+        }
+
+        /// <summary>
+        /// #39: typing intro text in the field and saving persists it on the
+        /// segment (asserted on the saved library JSON).
+        /// </summary>
+        [Fact]
+        public async Task Editor_CreateMode_SaveWithIntroText_PersistsIt()
+        {
+            SetupVersionResponse(1, 5);
+            SetupLibraryResponse("test-playlist", 1, 5);
+            HttpHandler.SetupPut("library");
+
+            var cut = RenderEditor(1, 5, "test-playlist");
+            await cut.InvokeAsync(() => Task.Delay(50));
+
+            SetSelectedVerses(cut, new[] { 1, 2, 3 });
+            await cut.InvokeAsync(() => cut.Find("input").Input("The fall of man"));
+            await ClickSave(cut);
+
+            var saved = await GetSavedSegments();
+            Assert.NotNull(saved);
+            Assert.Single(saved!);
+            Assert.Equal("The fall of man", saved[0].IntroText);
+        }
+
+        /// <summary>
+        /// #39: the intro text is trimmed on save and capped at 200 chars.
+        /// </summary>
+        [Fact]
+        public async Task Editor_CreateMode_SaveIntroText_TrimsAndCapsAt200()
+        {
+            SetupVersionResponse(1, 5);
+            SetupLibraryResponse("test-playlist", 1, 5);
+            HttpHandler.SetupPut("library");
+
+            var cut = RenderEditor(1, 5, "test-playlist");
+            await cut.InvokeAsync(() => Task.Delay(50));
+
+            SetSelectedVerses(cut, new[] { 1, 2, 3 });
+            SetIntroText(cut, "  " + new string('x', 250) + "  ");
+            await ClickSave(cut);
+
+            var saved = await GetSavedSegments();
+            Assert.NotNull(saved);
+            Assert.Single(saved!);
+            Assert.Equal(200, saved[0].IntroText!.Length);
+            Assert.DoesNotContain(" ", saved[0].IntroText);
+        }
+
+        /// <summary>
+        /// #39: Edit mode loads the stored intro text into the field.
+        /// </summary>
+        [Fact]
+        public async Task Editor_EditMode_LoadsIntroTextIntoField()
+        {
+            SetupVersionResponse(1, 5);
+            SetupLibraryResponse("test-playlist", 1, 5, new List<Segment>
+            {
+                new Segment { Id = 1, VerseStart = 2, VerseEnd = 4, IntroText = "The fall of man" }
+            });
+
+            var cut = RenderEditor(1, 5, "test-playlist", 1);
+            await cut.InvokeAsync(() => Task.Delay(50));
+
+            Assert.Equal("The fall of man", GetIntroFieldValue(cut));
+        }
+
+        /// <summary>
+        /// #39: clearing the intro text and saving removes it from the saved
+        /// JSON — the PUT body has no introText key at all (STJ omits nulls),
+        /// and the deserialized segment has a null IntroText.
+        /// </summary>
+        [Fact]
+        public async Task Editor_EditMode_ClearIntroText_RemovesItFromSavedJson()
+        {
+            SetupVersionResponse(1, 5);
+            SetupLibraryResponse("test-playlist", 1, 5, new List<Segment>
+            {
+                new Segment { Id = 1, VerseStart = 2, VerseEnd = 4, IntroText = "The fall of man" }
+            });
+            HttpHandler.SetupPut("library");
+
+            var cut = RenderEditor(1, 5, "test-playlist", 1);
+            await cut.InvokeAsync(() => Task.Delay(50));
+
+            SetIntroText(cut, string.Empty);
+            await ClickSave(cut);
+
+            var putRequest = HttpHandler.Requests.FirstOrDefault(req =>
+                req.Method == HttpMethod.Put &&
+                req.RequestUri?.AbsoluteUri.Contains("library") == true);
+            Assert.NotNull(putRequest);
+            var putBody = await putRequest!.Content!.ReadAsStringAsync(Xunit.TestContext.Current.CancellationToken);
+            Assert.DoesNotContain("introText", putBody);
+
+            var saved = await GetSavedSegments();
+            Assert.NotNull(saved);
+            Assert.Single(saved!);
+            Assert.Null(saved[0].IntroText);
+        }
+
+        /// <summary>
+        /// #39: the editor's TTS preview speaks the intro first — intro,
+        /// then chapter, then verses — in one speakSequenceAsync call.
+        /// </summary>
+        [Fact]
+        public async Task Editor_PlayButton_WithIntroText_SpeaksIntroFirst()
+        {
+            SetupVersionResponse(1, 5);
+            SetupLibraryResponse("test-playlist", 1, 5);
+
+            var cut = RenderEditor(1, 5, "test-playlist");
+            await cut.InvokeAsync(() => Task.Delay(50));
+
+            SetSelectedVerses(cut, new[] { 1, 2, 3 });
+            SetIntroText(cut, "The fall of man");
+
+            await cut.InvokeAsync(() =>
+            {
+                cut.Find("button").Click();
+            });
+            await cut.InvokeAsync(() => Task.Delay(50));
+
+            var expectedChapter = $"Test Book chapter {5.NumberToText()}";
+            var expectedSegment = new Segment { VerseStart = 1, VerseEnd = 3 }.VoiceText;
+            var speak = JSRuntime.Invocations.Single(i => i.Method == "speakSequenceAsync");
+            var texts = Assert.IsAssignableFrom<IEnumerable<string>>(speak.Args[0]);
+            Assert.Equal(new[] { "The fall of man", expectedChapter, expectedSegment }, texts.ToList());
+        }
+
+        /// <summary>
+        /// #39: with no intro text the preview sequence is exactly today's
+        /// (chapter, then verses) — no empty first entry.
+        /// </summary>
+        [Fact]
+        public async Task Editor_PlayButton_WithoutIntroText_SequenceUnchanged()
+        {
+            SetupVersionResponse(1, 5);
+            SetupLibraryResponse("test-playlist", 1, 5);
+
+            var cut = RenderEditor(1, 5, "test-playlist");
+            await cut.InvokeAsync(() => Task.Delay(50));
+
+            SetSelectedVerses(cut, new[] { 1, 2, 3 });
+
+            await cut.InvokeAsync(() =>
+            {
+                cut.Find("button").Click();
+            });
+            await cut.InvokeAsync(() => Task.Delay(50));
+
+            var expectedChapter = $"Test Book chapter {5.NumberToText()}";
+            var expectedSegment = new Segment { VerseStart = 1, VerseEnd = 3 }.VoiceText;
+            var speak = JSRuntime.Invocations.Single(i => i.Method == "speakSequenceAsync");
+            var texts = Assert.IsAssignableFrom<IEnumerable<string>>(speak.Args[0]);
+            Assert.Equal(new[] { expectedChapter, expectedSegment }, texts.ToList());
+        }
+
+        /// <summary>
+        /// #41: in Create mode, picking another chapter in the picker
+        /// navigates to the editor for that chapter in Create mode — the
+        /// URL carries the new book/chapter with segmentId/selectStart/
+        /// selectEnd set to 0 (not omitted, so no stale values survive).
+        /// </summary>
+        [Fact]
+        public async Task Editor_CreateMode_ChangeChapter_NavigatesToNewChapterCreateUrl()
+        {
+            SetupVersionResponse(1, 5);
+            SetupBibleMenuResponse();
+
+            var cut = RenderEditor(1, 5, "test-playlist");
+            await cut.InvokeAsync(() => Task.Delay(50));
+
+            await ClickChangeChapter(cut);
+            await PickChapterInPicker(cut, "John", 2);
+            await cut.InvokeAsync(() => Task.Delay(50));
+
+            var uri = Services.GetRequiredService<NavigationManager>().Uri;
+            Assert.Contains("/edit-segment?", uri);
+            Assert.Contains("book=43", uri);
+            Assert.Contains("chapter=2", uri);
+            Assert.Contains("playlist=test-playlist", uri);
+            Assert.Contains("segmentId=0", uri);
+            Assert.Contains("selectStart=0", uri);
+            Assert.Contains("selectEnd=0", uri);
+        }
+
+        /// <summary>
+        /// #41: when the editor's parameters change to another chapter (the
+        /// chapter-switch navigation), it reloads for that chapter: the
+        /// chapter reference updates and the selection and intro text start
+        /// empty — a selection belongs to the chapter it was made in.
+        /// </summary>
+        [Fact]
+        public async Task Editor_CreateMode_ChapterSwitch_ReloadsForNewChapter()
+        {
+            SetupVersionResponse(1, 5);
+            SetupVersionResponse(43, 2);
+            SetupLibraryResponse("test-playlist", 1, 5);
+
+            var cut = RenderEditor(1, 5, "test-playlist");
+            await cut.InvokeAsync(() => Task.Delay(50));
+
+            SetSelectedVerses(cut, new[] { 1, 2, 3 });
+            SetIntroText(cut, "The fall of man");
+
+            cut.SetParametersAndRender(
+                ComponentParameter.CreateParameter("Book", 43),
+                ComponentParameter.CreateParameter("Chapter", 2),
+                ComponentParameter.CreateParameter("SegmentId", 0),
+                ComponentParameter.CreateParameter("SelectStart", 0),
+                ComponentParameter.CreateParameter("SelectEnd", 0));
+
+            cut.WaitForAssertion(() => Assert.Contains("Test Book 2", cut.Markup), TimeSpan.FromSeconds(5));
+            Assert.Contains("Select verses to create a new segment", cut.Markup);
+            Assert.True(string.IsNullOrEmpty(GetIntroFieldValue(cut)));
+            Assert.Contains(HttpHandler.Requests,
+                req => req.Method == HttpMethod.Get &&
+                       req.RequestUri?.AbsoluteUri.Contains("Book=43") == true);
+        }
+
+        /// <summary>
+        /// #41: in Edit mode, picking another chapter warns first; cancelling
+        /// keeps the user on the segment they were editing (no navigation).
+        /// </summary>
+        [Fact]
+        public async Task Editor_EditMode_ChangeChapter_CancelKeepsEditing()
+        {
+            SetupVersionResponse(1, 5);
+            SetupLibraryResponse("test-playlist", 1, 5, new List<Segment>
+            {
+                new Segment { Id = 1, VerseStart = 2, VerseEnd = 4 }
+            });
+            SetupBibleMenuResponse();
+
+            var provider = RenderComponent<MudDialogProvider>();
+            var cut = RenderEditor(1, 5, "test-playlist", 1);
+            await cut.InvokeAsync(() => Task.Delay(50));
+
+            await ClickChangeChapter(cut);
+            await PickChapterInPicker(cut, "John", 2);
+            provider.WaitForAssertion(() => Assert.Contains("Changing chapters will discard your changes", provider.Markup),
+                TimeSpan.FromSeconds(5));
+
+            await cut.InvokeAsync(() => ClickDialogButton(provider, "Keep editing"));
+            await cut.InvokeAsync(() => Task.Delay(50));
+
+            Assert.Equal("http://localhost/", Services.GetRequiredService<NavigationManager>().Uri);
+        }
+
+        /// <summary>
+        /// #41: in Edit mode, confirming the discard warning switches to the
+        /// new chapter in Create mode (the segment being edited belonged to
+        /// the old chapter).
+        /// </summary>
+        [Fact]
+        public async Task Editor_EditMode_ChangeChapter_ConfirmSwitchesToCreateUrl()
+        {
+            SetupVersionResponse(1, 5);
+            SetupLibraryResponse("test-playlist", 1, 5, new List<Segment>
+            {
+                new Segment { Id = 1, VerseStart = 2, VerseEnd = 4 }
+            });
+            SetupBibleMenuResponse();
+
+            var provider = RenderComponent<MudDialogProvider>();
+            var cut = RenderEditor(1, 5, "test-playlist", 1);
+            await cut.InvokeAsync(() => Task.Delay(50));
+
+            await ClickChangeChapter(cut);
+            await PickChapterInPicker(cut, "John", 2);
+            provider.WaitForAssertion(() => Assert.Contains("Changing chapters will discard your changes", provider.Markup),
+                TimeSpan.FromSeconds(5));
+
+            await cut.InvokeAsync(() => ClickDialogButton(provider, "Discard and switch"));
+            cut.WaitForAssertion(() =>
+            {
+                var uri = Services.GetRequiredService<NavigationManager>().Uri;
+                Assert.Contains("book=43", uri);
+                Assert.Contains("chapter=2", uri);
+                Assert.Contains("segmentId=0", uri);
+            }, TimeSpan.FromSeconds(5));
         }
     }
 }

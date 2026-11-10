@@ -18,6 +18,7 @@
 @inject Config.Endpoints endpoints
 @inject NavigationManager NavManager
 @inject ISnackbar Snackbar
+@inject IDialogService DialogService
 
 <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-3">
     @if (!isInitialized)
@@ -48,7 +49,18 @@
             </MudButton>
             <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveSegment">Save</MudButton>
             <MudButton Variant="Variant.Text" Color="Color.Secondary" OnClick="CancelEdit">Cancel</MudButton>
+            @* #41: switch chapters from the editor. Appended last so the
+               first button in the row stays the Play button. *@
+            <MudButton Variant="Variant.Text" Color="Color.Primary" OnClick="ToggleBiblePicker">Change chapter</MudButton>
         </MudStack>
+
+        @* #41: the Bible picker (book/chapter list, no audio player). *@
+        @if (_showBiblePicker)
+        {
+            <MudPaper Class="pa-2 mb-3" Elevation="1">
+                <BiblePicker SelectedBook="Book" SelectedChapter="Chapter" OnChapterSelected="OnChapterSelected" />
+            </MudPaper>
+        }
 
         @if (playlistLoadFailed)
         {
@@ -76,6 +88,14 @@
                 No verses selected. Either add verses or delete the segment.
             </MudAlert>
         }
+
+        @* #39: optional intro text, spoken first (when TTS is on) and shown as
+           the segment card's heading. Empty means today's behavior. *@
+        <MudTextField @bind-Value="_introText" Label="Intro text (optional)"
+                      Variant="Variant.Outlined" MaxLength="200" Counter="200"
+                      Immediate="true"
+                      HelperText="Spoken before the chapter and verses, and shown as the segment's heading."
+                      Class="mb-3" />
 
         <!-- Verse list -->
         @foreach (var verse in displayVerses)
@@ -124,6 +144,12 @@
     private string? _currentPlayingVerseId;
     private bool _isPlaying;
     private SegmentMode Mode = SegmentMode.Create;
+    // #39: the intro text being edited (null/empty = no intro text).
+    private string? _introText;
+    // #41: whether the Bible picker panel is open; the chapter this load is for.
+    private bool _showBiblePicker;
+    private int _loadedBook = -1;
+    private int _loadedChapter = -1;
 
     [Parameter] [SupplyParameterFromQuery] public int Book { get; set; }
     [Parameter] [SupplyParameterFromQuery] public int Chapter { get; set; }
@@ -143,11 +169,54 @@
 
     protected override async Task OnInitializedAsync()
     {
-        Mode = SegmentId != 0 ? SegmentMode.Edit : SegmentMode.Create;
-        _selectedVerseNumbers = new HashSet<int>();
-        await LoadChapterAsync();
+        await LoadChapterForCurrentParametersAsync();
         isInitialized = true;
         StateHasChanged();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // #41: a chapter switch navigates to this same page with new query
+        // parameters and the component instance is reused, so reload when
+        // the chapter actually changed. The first call follows
+        // OnInitializedAsync with the same parameters and is a no-op.
+        if (isInitialized && (Book != _loadedBook || Chapter != _loadedChapter))
+        {
+            await LoadChapterForCurrentParametersAsync();
+        }
+        await base.OnParametersSetAsync();
+    }
+
+    /// <summary>
+    /// (Re)loads the chapter the query parameters point at: Mode from the
+    /// segmentId, per-chapter state reset, then the chapter load itself.
+    /// </summary>
+    private async Task LoadChapterForCurrentParametersAsync()
+    {
+        Mode = SegmentId != 0 ? SegmentMode.Edit : SegmentMode.Create;
+        ResetEditorState();
+        await LoadChapterAsync();
+        _loadedBook = Book;
+        _loadedChapter = Chapter;
+    }
+
+    /// <summary>
+    /// #41: per-chapter state is reset before (re)loading a chapter — a
+    /// chapter switch starts with a fresh empty selection and no intro text.
+    /// </summary>
+    private void ResetEditorState()
+    {
+        _selectedVerseNumbers = new HashSet<int>();
+        _introText = null;
+        _segmentStartAudio = 0;
+        _segmentEndAudio = 0;
+        _currentPlayingVerseId = null;
+        _isPlaying = false;
+        _showBiblePicker = false;
+        playlistLoadFailed = false;
+        chapterLoaded = false;
+        displayVerses = new List<Verse>();
+        StopPlaybackTimer();
     }
 
     private async Task LoadChapterAsync()
@@ -240,6 +309,9 @@
             if (segment != null)
             {
                 Mode = SegmentMode.Edit;
+                // #39: load the stored intro text into the field; saving
+                // with it cleared removes it.
+                _introText = segment.IntroText;
                 // Verses list is not persisted in the library JSON (marked [JsonIgnore]);
                 // derive the selection from VerseStart/VerseEnd + the chapter verses loaded earlier.
                 var matchingVerses = displayVerses
@@ -397,9 +469,13 @@
 
         if (speakTts)
         {
-            // TTS preview of what will be heard live: chapter voice text + segment voice text,
-            // as playlist playback does. Not re-spoken on seeks while already playing.
+            // TTS preview of what will be heard live: intro text first (#39),
+            // then chapter voice text + segment voice text, as playlist
+            // playback does. Not re-spoken on seeks while already playing.
             var texts = new List<string>();
+            var intro = NormalizeIntroText(_introText);
+            if (!string.IsNullOrWhiteSpace(intro))
+                texts.Add(intro);
             if (!string.IsNullOrWhiteSpace(_bookName))
                 texts.Add($"{_bookName} chapter {Chapter.NumberToText()}");
             if (_selectedVerseNumbers.Count > 0)
@@ -474,10 +550,78 @@
         var newSegment = new Segment
         {
             VerseStart = min,
-            VerseEnd = max
+            VerseEnd = max,
+            // #39: trimmed on save; empty means no intro text (null, so it
+            // is omitted from the saved JSON).
+            IntroText = NormalizeIntroText(_introText)
         };
 
         await PersistSegmentAsync(newSegment);
+    }
+
+    /// <summary>
+    /// #39: the intro text is trimmed on save and capped at 200 characters;
+    /// empty or whitespace-only means no intro text (null).
+    /// </summary>
+    private static string? NormalizeIntroText(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var trimmed = value.Trim();
+        return trimmed.Length > 200 ? trimmed[..200] : trimmed;
+    }
+
+    private void ToggleBiblePicker()
+    {
+        _showBiblePicker = !_showBiblePicker;
+    }
+
+    /// <summary>
+    /// #41: a chapter picked in the Bible picker. In Create mode the switch
+    /// is immediate (a selection belongs to the chapter it was made in, so
+    /// the new chapter starts empty). In Edit mode the segment being edited
+    /// belongs to the old chapter, so warn first — Greg's call: warn and
+    /// confirm, not block — and switch only on confirm.
+    /// </summary>
+    private async Task OnChapterSelected((int Book, string BookName, int Chapter) selected)
+    {
+        _showBiblePicker = false;
+        if (selected.Book == Book && selected.Chapter == Chapter)
+            return;
+
+        if (Mode == SegmentMode.Edit)
+        {
+            var parameters = new DialogParameters
+            {
+                ["TargetChapter"] = $"{selected.BookName} {selected.Chapter}"
+            };
+            var dialog = await DialogService.ShowAsync<ChangeChapterConfirmDialog>("Change chapter?", parameters);
+            var result = await dialog.Result;
+            if (result is not { Canceled: false, Data: true })
+                return;
+        }
+
+        await SwitchChapterAsync(selected.Book, selected.Chapter);
+    }
+
+    private async Task SwitchChapterAsync(int book, int chapter)
+    {
+        await StopPlaybackAsync();
+        NavManager.NavigateTo(BuildEditorUrl(book, chapter));
+    }
+
+    /// <summary>
+    /// #41: the editor URL for a chapter switch. segmentId/selectStart/
+    /// selectEnd are set explicitly to 0: [SupplyParameterFromQuery] only
+    /// sets a parameter when the key is present, so omitting them would
+    /// leave the old segment Id and pre-selection on the reused component.
+    /// </summary>
+    private string BuildEditorUrl(int book, int chapter)
+    {
+        var query = $"library={System.Net.WebUtility.UrlEncode(LibraryCode ?? string.Empty)}" +
+                    $"&book={book}&chapter={chapter}" +
+                    $"&playlist={System.Net.WebUtility.UrlEncode(Playlist ?? string.Empty)}" +
+                    "&segmentId=0&selectStart=0&selectEnd=0";
+        return $"/edit-segment?{query}";
     }
 
     private async Task PersistSegmentAsync(Segment segment)
