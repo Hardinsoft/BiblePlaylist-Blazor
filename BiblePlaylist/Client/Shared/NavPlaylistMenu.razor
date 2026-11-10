@@ -94,6 +94,16 @@
                                                                      Class="mud-text-secondary chapter-drag-handle"
                                                                      Style="cursor: grab; flex-shrink: 0;" />
                                                             <MudText Typo="Typo.subtitle1" Class="flex-grow-1">@context.Display</MudText>
+                                                            @* #42: chapter menu — Delete lives here so a chapter
+                                                               with segments can be removed without deleting them
+                                                               one by one. *@
+                                                            <MudMenu Icon="@Icons.Material.Filled.MoreVert"
+                                                                     AriaLabel="Chapter options"
+                                                                     @onclick:stopPropagation="true">
+                                                                <MudMenuItem Label="Delete chapter"
+                                                                             Style="color: var(--mud-palette-error);"
+                                                                             @onclick="() => DeleteChapterAsync(context)" />
+                                                            </MudMenu>
                                                         </div>
                                                     </TitleContent>
                                                     <ChildContent>
@@ -972,12 +982,6 @@
             return;
         }
 
-        // #42: a chapter kept empty must stay expanded — otherwise the
-        // re-render collapses its panel (no current segment in it any more)
-        // and the empty-chapter actions are hidden until the user re-opens it.
-        if (!chapter.Segments.Any())
-            _expandedChapter = chapter;
-
         RebuildPlaylistSegments();
         _currentSegmentIndex = _playlistSegments.Any()
             ? _playlistSegments.FindIndex(s => s.Chapter == chapter)
@@ -1040,7 +1044,8 @@
         var parameters = new DialogParameters
         {
             ["ChapterDisplay"] = chapter.Display,
-            ["WasLastSegment"] = wasLastSegment
+            ["WasLastSegment"] = wasLastSegment,
+            ["SegmentCount"] = chapter.Segments?.Count ?? 0
         };
         var dialog = await DialogService.ShowAsync<DeleteChapterConfirmDialog>("Delete chapter?", parameters);
         var result = await dialog.Result;

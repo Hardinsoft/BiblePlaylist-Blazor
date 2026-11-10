@@ -12,6 +12,12 @@
                 This was the last segment in @ChapterDisplay. Delete the chapter from the playlist as well?
             </MudText>
         }
+        else if (SegmentCount > 0)
+        {
+            <MudText Typo="Typo.body1">
+                Delete @ChapterDisplay and its @(SegmentCount == 1 ? "1 segment" : $"{SegmentCount} segments") from the playlist?
+            </MudText>
+        }
         else
         {
             <MudText Typo="Typo.body1">
@@ -34,6 +40,9 @@
 
     [Parameter]
     public bool WasLastSegment { get; set; }
+
+    [Parameter]
+    public int SegmentCount { get; set; }
 
     private void ConfirmDelete() => MudDialog.Close(DialogResult.Ok(true));
     private void Cancel() => MudDialog.Cancel();

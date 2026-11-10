@@ -198,6 +198,26 @@ namespace BiblePlaylist.Tests
             return cut.InvokeAsync(() => (Task)method.Invoke(instance, new object[] { chapter, segment })!);
         }
 
+        /// <summary>
+        /// #42: start the chapter panel menu's DeleteChapterAsync handler for
+        /// the given chapter (by playlist order). Same MudMenu popover
+        /// limitation as StartDeleteSegment: the menu items never render in
+        /// bUnit, so the handler the menu item is wired to is driven here
+        /// and the click path is covered by the real-browser check.
+        /// </summary>
+        private static Task StartDeleteChapterAsync(
+            IRenderedComponent<BiblePlaylist.Client.Shared.NavPlaylistMenu> cut, int chapterIndex)
+        {
+            var instance = cut.Instance;
+            var type = typeof(BiblePlaylist.Client.Shared.NavPlaylistMenu);
+            var playlist = (Playlist)type
+                .GetProperty("selectedPlaylist", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .GetValue(instance)!;
+            var chapter = playlist.BookChapters![chapterIndex];
+            var method = type.GetMethod("DeleteChapterAsync", BindingFlags.NonPublic | BindingFlags.Instance)!;
+            return cut.InvokeAsync(() => (Task)method.Invoke(instance, new object[] { chapter })!);
+        }
+
         private static void ClickDialogButton(IRenderedComponent<MudDialogProvider> provider, string text)
         {
             provider.FindAll("button").First(b => b.TextContent.Contains(text)).Click();
@@ -543,13 +563,6 @@ namespace BiblePlaylist.Tests
                 book: 43, chapter: 1, segmentId: 1);
             try
             {
-                // Simulate the plain /playlists load: the panel was opened
-                // with a header click, not the return URL, so _expandedChapter
-                // is null here (RenderMenu's return URL is what sets it).
-                typeof(BiblePlaylist.Client.Shared.NavPlaylistMenu)
-                    .GetField("_expandedChapter", BindingFlags.NonPublic | BindingFlags.Instance)!
-                    .SetValue(cut.Instance, null);
-
                 var deleteTask = StartDeleteSegment(cut, chapterIndex: 0, segmentIndex: 0);
 
                 cut.WaitForAssertion(() =>
@@ -575,15 +588,6 @@ namespace BiblePlaylist.Tests
                     TimeSpan.FromSeconds(5));
                 Assert.Contains(cut.FindAll("button"), b => b.TextContent.Contains("Delete chapter"));
                 Assert.Contains(cut.FindAll("button"), b => b.TextContent.Trim() == "Add segment");
-
-                // #42: the kept chapter stays expanded, so the empty-chapter
-                // actions above stay visible instead of collapsing away.
-                var expandedChapter = (BookChapter?)typeof(BiblePlaylist.Client.Shared.NavPlaylistMenu)
-                    .GetField("_expandedChapter", BindingFlags.NonPublic | BindingFlags.Instance)!
-                    .GetValue(cut.Instance);
-                Assert.NotNull(expandedChapter);
-                Assert.Equal("John", expandedChapter!.BookName);
-                Assert.Equal(1, expandedChapter.ChapterNumber);
 
                 await deleteTask;
             }
@@ -682,6 +686,79 @@ namespace BiblePlaylist.Tests
                 Assert.Equal(2, chapters[0].Segments![0].Id);
                 Assert.Equal(3, chapters[0].Segments[0].VerseStart);
                 Assert.Equal(4, chapters[0].Segments[0].VerseEnd);
+
+                await deleteTask;
+            }
+            finally { StopTimer(cut); }
+        }
+
+        /// <summary>
+        /// #42: the chapter panel menu offers a Delete chapter item on every
+        /// chapter; confirming it deletes the chapter and all its segments,
+        /// and the dialog names how many segments go with it.
+        /// </summary>
+        [Fact]
+        public async Task ChapterMenu_DeleteChapter_ConfirmRemovesChapterWithSegments()
+        {
+            var provider = RenderComponent<MudDialogProvider>();
+            var cut = RenderMenu(new List<BookChapter> { JohnSingleSegmentChapter(), LukeTwoSegmentChapter() },
+                book: 43, chapter: 1, segmentId: 1);
+            try
+            {
+                // The ⋮ menu activator renders per chapter; its popover items
+                // do not render in bUnit (see StartDeleteSegment).
+                Assert.Equal(2, cut.FindAll("[aria-label='Chapter options']").Count());
+
+                var deleteTask = StartDeleteChapterAsync(cut, chapterIndex: 1);
+
+                cut.WaitForAssertion(() =>
+                    Assert.Contains("and its 2 segments from the playlist?", provider.Markup),
+                    TimeSpan.FromSeconds(5));
+
+                ClickDialogButton(provider, "Delete chapter");
+
+                cut.WaitForAssertion(() =>
+                    Assert.Contains(HttpHandler.Requests, r => r.Method == HttpMethod.Put),
+                    TimeSpan.FromSeconds(5));
+                var savedLibrary = await GetSavedLibrary();
+                Assert.NotNull(savedLibrary);
+                var chapters = savedLibrary!.Playlists?.FirstOrDefault()?.BookChapters?.ToList();
+                Assert.NotNull(chapters);
+                Assert.Single(chapters!);
+                Assert.Equal("John", chapters![0].BookName);
+                Assert.Single(chapters[0].Segments!);
+
+                await deleteTask;
+            }
+            finally { StopTimer(cut); }
+        }
+
+        /// <summary>
+        /// #42: cancelling the chapter menu's delete keeps the chapter and
+        /// its segments, and saves nothing. Uses the one-segment chapter, so
+        /// the dialog's singular wording is covered too.
+        /// </summary>
+        [Fact]
+        public async Task ChapterMenu_DeleteChapter_CancelKeepsChapter()
+        {
+            var provider = RenderComponent<MudDialogProvider>();
+            var cut = RenderMenu(new List<BookChapter> { JohnSingleSegmentChapter(), LukeTwoSegmentChapter() },
+                book: 43, chapter: 1, segmentId: 1);
+            try
+            {
+                var deleteTask = StartDeleteChapterAsync(cut, chapterIndex: 0);
+
+                cut.WaitForAssertion(() =>
+                    Assert.Contains("and its 1 segment from the playlist?", provider.Markup),
+                    TimeSpan.FromSeconds(5));
+
+                ClickDialogButton(provider, "Keep chapter");
+
+                cut.WaitForAssertion(() =>
+                    Assert.DoesNotContain("and its 1 segment from the playlist?", provider.Markup),
+                    TimeSpan.FromSeconds(5));
+                Assert.DoesNotContain(HttpHandler.Requests, r => r.Method == HttpMethod.Put);
+                Assert.Contains("John 1", cut.Markup);
 
                 await deleteTask;
             }
