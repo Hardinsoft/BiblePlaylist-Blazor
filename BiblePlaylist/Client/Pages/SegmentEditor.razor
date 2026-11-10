@@ -130,6 +130,9 @@
     [Parameter] [SupplyParameterFromQuery] public string? Playlist { get; set; }
     [Parameter] [SupplyParameterFromQuery(Name = "library")] public string? LibraryCode { get; set; }
     [Parameter] [SupplyParameterFromQuery] public int SegmentId { get; set; }
+    // #37: the Read page can pre-select a verse range for a new segment.
+    [Parameter] [SupplyParameterFromQuery] public int SelectStart { get; set; }
+    [Parameter] [SupplyParameterFromQuery] public int SelectEnd { get; set; }
 
     private decimal _segmentStartAudio;
     private decimal _segmentEndAudio;
@@ -188,6 +191,10 @@
             if (Mode == SegmentMode.Edit)
             {
                 await LoadPlaylistAndSegmentAsync();
+            }
+            else
+            {
+                ApplyPreselection();
             }
 
             chapterLoaded = true;
@@ -253,6 +260,25 @@
             logger.LogError(ex, "Error loading playlist segment");
             playlistLoadFailed = true;
         }
+    }
+
+    /// <summary>
+    /// #37: the Read page can pre-select a verse range (selectStart/selectEnd
+    /// query parameters). Fill the selection from the range, keeping only the
+    /// verses this chapter actually has; an invalid or out-of-range selection
+    /// leaves the selection empty and the editor behaves as before.
+    /// </summary>
+    private void ApplyPreselection()
+    {
+        if (SelectStart <= 0 || SelectEnd < SelectStart) return;
+        var numbers = displayVerses
+            .Where(v => v.Number >= SelectStart && v.Number <= SelectEnd)
+            .Select(v => v.Number)
+            .ToList();
+        if (numbers.Count == 0) return;
+        foreach (var n in numbers)
+            _selectedVerseNumbers.Add(n);
+        RecomputeSegmentRange();
     }
 
     private string ShowSegmentRange()
@@ -495,8 +521,27 @@
 
             if (bookChapter == null)
             {
-                Snackbar.Add("Chapter not found in playlist.", Severity.Error);
-                return;
+                if (Mode != SegmentMode.Create)
+                {
+                    Snackbar.Add("Chapter not found in playlist.", Severity.Error);
+                    return;
+                }
+
+                // #37: a new-chapter segment — create the chapter from the
+                // data the editor already loaded, appended at the end of the
+                // playlist (the playlist's own order is what matters).
+                bookChapter = new BookChapter
+                {
+                    VersionCode = BiblePlaylist.Shared.Structs.Version.NET,
+                    BookNumber = Book,
+                    BookName = _bookName,
+                    ChapterNumber = Chapter,
+                    ChapterAudioUrl = _chapterAudioUrl,
+                    Segments = new List<Segment>()
+                };
+                if (playlist.BookChapters == null)
+                    playlist.BookChapters = new List<BookChapter>();
+                playlist.BookChapters.Add(bookChapter);
             }
 
             if (Mode == SegmentMode.Edit)

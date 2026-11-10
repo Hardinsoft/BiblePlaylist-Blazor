@@ -15,6 +15,7 @@
 @inject Endpoints endpoints
 @inject NavigationManager NavManager
 @inject ISnackbar Snackbar
+@inject IDialogService DialogService
 
 <MudGrid Class="sticky-top mud-elevation-4 stick-to-menu-bottom" hidden="@(hideChapters)" Spacing="2">
     <MudItem xs="12">
@@ -153,11 +154,19 @@
                                                                 </MudPaper>
                                                             }
                                                         }
+                                                        @* #37: create a segment in this chapter. *@
+                                                        <MudButton Variant="Variant.Text" Color="Color.Primary"
+                                                                   StartIcon="@Icons.Material.Filled.Add"
+                                                                   OnClick="() => NavigateToCreate(context)" Class="mt-1">Add segment</MudButton>
                                                     </ChildContent>
                                                 </MudExpansionPanel>
                                             </ItemRenderer>
                                         </MudDropContainer>
                                     }
+                                    @* #37: start a segment in a chapter not in this playlist yet. *@
+                                    <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                                               StartIcon="@Icons.Material.Filled.Add"
+                                               OnClick="NavigateToAddNewChapterSegment" Class="mt-3">Add segment to a new chapter</MudButton>
                                 }
                             </MudGrid>
                         </MudItem>
@@ -892,6 +901,38 @@
         return Library?.Playlists?.FirstOrDefault(p => p.Name == selectedPlaylist?.Name)?.Key
                ?? selectedPlaylist?.Key
                ?? string.Empty;
+    }
+
+    private void NavigateToCreate(BookChapter chapter)
+    {
+        var playlistKey = GetPlaylistKey();
+        var libraryCode = Library?.Code ?? string.Empty;
+        var query = $"library={System.Net.WebUtility.UrlEncode(libraryCode)}&book={chapter.BookNumber}&chapter={chapter.ChapterNumber}&playlist={System.Net.WebUtility.UrlEncode(playlistKey)}";
+        NavManager.NavigateTo($"/edit-segment?{query}");
+    }
+
+    // #37: one-time explainer for adding a segment in a new chapter.
+    // First click shows the explainer dialog; once the user has used it,
+    // the button goes straight to the Read page.
+    private bool? _addSegmentHelpSeen;
+
+    private async Task NavigateToAddNewChapterSegment()
+    {
+        _addSegmentHelpSeen ??= await localStorage.GetItemAsync<bool>("userName_addSegmentHelpSeen");
+        if (_addSegmentHelpSeen == true)
+        {
+            NavManager.NavigateTo("/");
+            return;
+        }
+
+        var dialog = await DialogService.ShowAsync<AddSegmentHelpDialog>("Add a segment");
+        var result = await dialog.Result;
+        if (result is { Canceled: false, Data: true })
+        {
+            _addSegmentHelpSeen = true;
+            await localStorage.SetItemAsync("userName_addSegmentHelpSeen", true);
+            NavManager.NavigateTo("/");
+        }
     }
 
     private void NavigateToEdit(BookChapter chapter, Segment segment)

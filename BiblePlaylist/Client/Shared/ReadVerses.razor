@@ -1,18 +1,55 @@
 ﻿
 @using BiblePlaylist.Client.Events
 @using Microsoft.Extensions.Logging
+@using MudBlazor
 @inject HttpClient Http
 @inject Blazored.LocalStorage.ILocalStorageService localStorage
 @inject IJSRuntime JSRuntime
 @inject ILogger<ReadVerses> logger
 @inject IDelegateLibrary delegateLibrary
+@inject NavigationManager NavManager
 
+
+@* #37: verse selection + add to playlist. *@
+@if (_selectedVerseNumbers.Count > 0 && SelectedBookChapter != null)
+{
+    <MudPaper Class="pa-2 mb-3 d-flex align-center gap-2 flex-wrap">
+        <MudText Typo="Typo.body1" Class="flex-grow-1">Selected: @ShowSelectionRange()</MudText>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="TogglePlaylistPicker">Add to playlist</MudButton>
+        <MudButton Variant="Variant.Text" Color="Color.Secondary" OnClick="ClearSelection">Clear</MudButton>
+    </MudPaper>
+    @if (_showPlaylistPicker)
+    {
+        <MudPaper Class="pa-2 mb-3">
+            @if (_library == null)
+            {
+                <MudText Typo="Typo.body2">Loading playlists...</MudText>
+            }
+            else if (_library.Playlists == null || _library.Playlists.Count == 0)
+            {
+                <MudText Typo="Typo.body2">No playlists found.</MudText>
+            }
+            else
+            {
+                <MudText Typo="Typo.body2" Class="mb-2">Choose a playlist:</MudText>
+                @foreach (var playlist in _library.Playlists)
+                {
+                    <MudButton Variant="Variant.Text" Color="Color.Primary" OnClick="() => AddSelectionToPlaylist(playlist)">@playlist.Name</MudButton>
+                }
+            }
+        </MudPaper>
+    }
+}
 
 <div class="row">
     <div class="col col-12">
         @foreach(var v in displayVerses)
         {
-            <p style="font-size: large"><strong class="mr-3">@v.Number</strong>@(new MarkupString(v.Html))</p>
+            var isSelected = _selectedVerseNumbers.Contains(v.Number);
+            var verseStyle = isSelected
+                ? "cursor: pointer; background-color: rgba(var(--mud-palette-primary-rgb), 0.10); border-left: 4px solid var(--mud-palette-primary);"
+                : "cursor: pointer;";
+            <p id="read-verse-@v.Number" style="@($"font-size: large; {verseStyle}")" @onclick="() => ToggleVerse(v.Number)"><strong class="mr-3">@v.Number</strong>@(new MarkupString(v.Html))</p>
         }
     </div>
 </div>
@@ -22,6 +59,84 @@
     private List<BiblePlaylist.Shared.Bible.Verse> displayVerses = new List<BiblePlaylist.Shared.Bible.Verse>();
     private BiblePlaylist.Shared.DTO.SelectedBookChapter? SelectedBookChapter { get; set; }
     private string previousBookChapter = string.Empty;
+
+    // #37: verse selection + add to playlist.
+    private HashSet<int> _selectedVerseNumbers = new();
+    private BiblePlaylist.Shared.Data.Library? _library;
+    private bool _showPlaylistPicker;
+
+    private void ToggleVerse(int verseNumber)
+    {
+        if (_selectedVerseNumbers.Contains(verseNumber))
+            _selectedVerseNumbers.Remove(verseNumber);
+        else
+            _selectedVerseNumbers.Add(verseNumber);
+
+        // #24: a segment is a contiguous range — fill any gap the toggle opened.
+        if (_selectedVerseNumbers.Count > 0)
+        {
+            var min = _selectedVerseNumbers.Min();
+            var max = _selectedVerseNumbers.Max();
+            for (var n = min; n <= max; n++)
+                _selectedVerseNumbers.Add(n);
+        }
+
+        if (_selectedVerseNumbers.Count == 0)
+            _showPlaylistPicker = false;
+        else if (_library == null)
+            _ = LoadPlaylistsAsync();
+
+        StateHasChanged();
+    }
+
+    private string ShowSelectionRange()
+    {
+        if (_selectedVerseNumbers.Count == 0)
+            return "none";
+        var min = _selectedVerseNumbers.Min();
+        var max = _selectedVerseNumbers.Max();
+        return $"{min}-{max} ({_selectedVerseNumbers.Count} verses)";
+    }
+
+    private void ClearSelection()
+    {
+        _selectedVerseNumbers.Clear();
+        _showPlaylistPicker = false;
+        StateHasChanged();
+    }
+
+    private void TogglePlaylistPicker()
+    {
+        _showPlaylistPicker = !_showPlaylistPicker;
+        if (_showPlaylistPicker && _library == null)
+            _ = LoadPlaylistsAsync();
+        StateHasChanged();
+    }
+
+    private async Task LoadPlaylistsAsync()
+    {
+        try
+        {
+            var libraryResponse = await Http.GetStringAsync("library?key=library_greg_hardin_live_com");
+            _library = JsonConvert.DeserializeObject<BiblePlaylist.Shared.Data.Library>(libraryResponse);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Cannot load library for playlist picker");
+            _library = new BiblePlaylist.Shared.Data.Library();
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void AddSelectionToPlaylist(BiblePlaylist.Shared.Playlist.Playlist playlist)
+    {
+        if (SelectedBookChapter == null || _selectedVerseNumbers.Count == 0) return;
+        var min = _selectedVerseNumbers.Min();
+        var max = _selectedVerseNumbers.Max();
+        var libraryCode = _library?.Code ?? "library_greg_hardin_live_com";
+        var query = $"library={System.Net.WebUtility.UrlEncode(libraryCode)}&book={SelectedBookChapter.SelectedBook}&chapter={SelectedBookChapter.SelectedChapter}&playlist={System.Net.WebUtility.UrlEncode(playlist.Key)}&selectStart={min}&selectEnd={max}";
+        NavManager.NavigateTo($"/edit-segment?{query}");
+    }
     
 
     protected override async Task OnParametersSetAsync()
@@ -94,6 +209,9 @@
         if (selectedBookChapter != null && previousBookChapter != $"{selectedBookChapter.SelectedChapter}{selectedBookChapter.SelectedBook}")
         {
             previousBookChapter = $"{selectedBookChapter.SelectedChapter}{selectedBookChapter.SelectedBook}";
+            // #37: a selection belongs to the chapter it was made in.
+            _selectedVerseNumbers.Clear();
+            _showPlaylistPicker = false;
             var lastReadResponse = await Http.GetAsync($"Version?key={BiblePlaylist.Shared.Structs.Version.NET}&Book={selectedBookChapter.SelectedBook.ToString()}&Chapter={selectedBookChapter.SelectedChapter.ToString()}");
 
             BiblePlaylist.Shared.Bible.Version? lastRead = null;

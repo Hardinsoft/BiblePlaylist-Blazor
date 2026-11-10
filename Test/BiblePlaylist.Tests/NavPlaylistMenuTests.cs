@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.JSInterop;
 using Moq;
+using MudBlazor;
 using MudBlazor.Services;
 using Newtonsoft.Json;
 using System;
@@ -260,6 +261,107 @@ namespace BiblePlaylist.Tests
                     i => i.Method == "seekAudioPlayer" && i.Args.Length >= 2 &&
                          Convert.ToDecimal(i.Args[1]) == 30m),
                     TimeSpan.FromSeconds(5));
+            }
+            finally { StopTimer(cut); }
+        }
+
+        /// <summary>
+        /// #37: the per-chapter "Add segment" button opens the editor in
+        /// Create mode for that chapter — no segmentId in the URL.
+        /// </summary>
+        [Fact]
+        public void Chapter_AddSegment_NavigatesToEditorCreateMode()
+        {
+            var cut = RenderReturnMenu();
+            try
+            {
+                var addButton = cut.FindAll("button")
+                    .FirstOrDefault(b => b.TextContent.Contains("Add segment"));
+                Assert.NotNull(addButton);
+                addButton!.Click();
+
+                var uri = Services.GetRequiredService<NavigationManager>().Uri;
+                Assert.Contains("/edit-segment?", uri);
+                Assert.Contains("book=43", uri);
+                Assert.Contains("chapter=1", uri);
+                Assert.Contains("playlist=test-key", uri);
+                Assert.DoesNotContain("segmentId", uri);
+            }
+            finally { StopTimer(cut); }
+        }
+
+        /// <summary>
+        /// #37: the playlist-level "Add segment to a new chapter" button
+        /// shows the one-time explainer dialog on first click.
+        /// </summary>
+        [Fact]
+        public void Playlist_AddSegmentToNewChapter_FirstClick_ShowsExplainerDialog()
+        {
+            var provider = RenderComponent<MudDialogProvider>();
+            var cut = RenderReturnMenu();
+            try
+            {
+                var addButton = cut.FindAll("button")
+                    .FirstOrDefault(b => b.TextContent.Contains("Add segment to a new chapter"));
+                Assert.NotNull(addButton);
+                addButton!.Click();
+
+                cut.WaitForAssertion(() =>
+                    Assert.Contains("Pick the chapter on the Read page", provider.Markup),
+                    TimeSpan.FromSeconds(5));
+            }
+            finally { StopTimer(cut); }
+        }
+
+        /// <summary>
+        /// #37: choosing "Go to Read page" in the explainer navigates to the
+        /// Read page, remembers the explainer was used, and the next click
+        /// on the button goes straight to the Read page without the dialog.
+        /// </summary>
+        [Fact]
+        public void Playlist_AddSegmentToNewChapter_DialogGo_NavigatesAndSecondClickGoesDirect()
+        {
+            var provider = RenderComponent<MudDialogProvider>();
+            var cut = RenderReturnMenu();
+            try
+            {
+                var addButton = cut.FindAll("button")
+                    .First(b => b.TextContent.Contains("Add segment to a new chapter"));
+                addButton.Click();
+
+                cut.WaitForAssertion(() =>
+                    Assert.Contains("Pick the chapter on the Read page", provider.Markup),
+                    TimeSpan.FromSeconds(5));
+
+                var goButton = provider.FindAll("button")
+                    .First(b => b.TextContent.Contains("Go to Read page"));
+                goButton.Click();
+
+                cut.WaitForAssertion(() =>
+                    Assert.Equal("http://localhost/",
+                        Services.GetRequiredService<NavigationManager>().Uri),
+                    TimeSpan.FromSeconds(5));
+                cut.WaitForAssertion(() =>
+                    Assert.DoesNotContain("Pick the chapter on the Read page", provider.Markup),
+                    TimeSpan.FromSeconds(5));
+
+                // The one-time flag was persisted.
+                Assert.Contains(JSRuntime.Invocations, i =>
+                    i.Method == "localStorage.setItem" &&
+                    i.Args.Length >= 1 &&
+                    i.Args[0]?.ToString() == "userName_addSegmentHelpSeen");
+
+                // Second click: straight to the Read page, no dialog again.
+                var navManager = Services.GetRequiredService<NavigationManager>();
+                navManager.NavigateTo("/playlists?playlist=test-key&library=library_greg_hardin_live_com&book=43&chapter=1&segmentId=2");
+                addButton = cut.FindAll("button")
+                    .First(b => b.TextContent.Contains("Add segment to a new chapter"));
+                addButton.Click();
+
+                cut.WaitForAssertion(() =>
+                    Assert.Equal("http://localhost/", navManager.Uri),
+                    TimeSpan.FromSeconds(5));
+                Assert.DoesNotContain("Pick the chapter on the Read page", provider.Markup);
             }
             finally { StopTimer(cut); }
         }
