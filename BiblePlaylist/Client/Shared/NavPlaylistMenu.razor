@@ -94,6 +94,16 @@
                                                                      Class="mud-text-secondary chapter-drag-handle"
                                                                      Style="cursor: grab; flex-shrink: 0;" />
                                                             <MudText Typo="Typo.subtitle1" Class="flex-grow-1">@context.Display</MudText>
+                                                            @* #42: chapter menu — Delete lives here so a chapter
+                                                               with segments can be removed without deleting them
+                                                               one by one. *@
+                                                            <MudMenu Icon="@Icons.Material.Filled.MoreVert"
+                                                                     AriaLabel="Chapter options"
+                                                                     @onclick:stopPropagation="true">
+                                                                <MudMenuItem Label="Delete chapter"
+                                                                             Style="color: var(--mud-palette-error);"
+                                                                             @onclick="() => DeleteChapterAsync(context)" />
+                                                            </MudMenu>
                                                         </div>
                                                     </TitleContent>
                                                     <ChildContent>
@@ -102,6 +112,12 @@
                                                             <MudAlert Severity="Severity.Warning" Variant="Variant.Text" Dense="true">
                                                                 No segments defined for this chapter.
                                                             </MudAlert>
+                                                            @* #42: an empty chapter can be removed here (or refilled
+                                                               via Add segment below). No delete button on the
+                                                               chapter panel itself. *@
+                                                            <MudButton Variant="Variant.Text" Color="Color.Error"
+                                                                       StartIcon="@Icons.Material.Filled.Delete"
+                                                                       OnClick="() => DeleteChapterAsync(context)" Class="mt-1">Delete chapter</MudButton>
                                                         }
                                                         else
                                                         {
@@ -954,6 +970,18 @@
             : null;
 
         chapter.Segments.Remove(segment);
+
+        // #42: deleting the last segment leaves an empty chapter. Offer to
+        // delete the chapter too; keeping it leaves the empty-chapter panel
+        // (Add segment / Delete chapter) in place.
+        if (!chapter.Segments.Any() && await PromptDeleteChapterAsync(chapter, wasLastSegment: true))
+        {
+            await DeleteChapterCoreAsync(chapter, pendingSegment);
+            Snackbar.Add($"Chapter '{chapter.Display}' deleted.", Severity.Info);
+            await RefreshDropContainerAsync();
+            return;
+        }
+
         RebuildPlaylistSegments();
         _currentSegmentIndex = _playlistSegments.Any()
             ? _playlistSegments.FindIndex(s => s.Chapter == chapter)
@@ -966,6 +994,66 @@
 
         Snackbar.Add($"Segment '{segment.VerseStart}-{segment.VerseEnd}' deleted.", Severity.Info);
 
+        await RefreshDropContainerAsync();
+    }
+
+    // #42: remove a chapter from the playlist, from the empty-chapter
+    // "Delete chapter" button. Always confirms first.
+    private async Task DeleteChapterAsync(BookChapter chapter)
+    {
+        if (chapter == null || selectedPlaylist?.BookChapters == null) return;
+        if (!await PromptDeleteChapterAsync(chapter, wasLastSegment: false)) return;
+
+        // #30: a pending return segment must not survive as a stale index if
+        // its chapter is deleted; recompute by identity.
+        var pendingSegment = _pendingSegmentIndex >= 0 && _pendingSegmentIndex < _playlistSegments.Count
+            ? _playlistSegments[_pendingSegmentIndex].Segment
+            : null;
+
+        await DeleteChapterCoreAsync(chapter, pendingSegment);
+
+        Snackbar.Add($"Chapter '{chapter.Display}' deleted.", Severity.Info);
+
+        await RefreshDropContainerAsync();
+    }
+
+    // #42: remove the chapter from the playlist, keep playback indices in
+    // sync by segment identity (same pattern as OnBookChapterDropped), and save.
+    private async Task DeleteChapterCoreAsync(BookChapter chapter, Segment? pendingSegment)
+    {
+        var playingSegment = CurrentSegment?.Segment;
+
+        selectedPlaylist.BookChapters.Remove(chapter);
+        if (_expandedChapter == chapter) _expandedChapter = null;
+
+        RebuildPlaylistSegments();
+        _currentSegmentIndex = playingSegment != null
+            ? _playlistSegments.FindIndex(s => s.Segment == playingSegment)
+            : -1;
+        _pendingSegmentIndex = pendingSegment != null
+            ? _playlistSegments.FindIndex(s => s.Segment == pendingSegment)
+            : -1;
+
+        await SaveLibraryAsync();
+    }
+
+    // #42: ask whether an emptied chapter should be deleted too.
+    // Returns true only when the user confirms "Delete chapter".
+    private async Task<bool> PromptDeleteChapterAsync(BookChapter chapter, bool wasLastSegment)
+    {
+        var parameters = new DialogParameters
+        {
+            ["ChapterDisplay"] = chapter.Display,
+            ["WasLastSegment"] = wasLastSegment,
+            ["SegmentCount"] = chapter.Segments?.Count ?? 0
+        };
+        var dialog = await DialogService.ShowAsync<DeleteChapterConfirmDialog>("Delete chapter?", parameters);
+        var result = await dialog.Result;
+        return result is { Canceled: false, Data: true };
+    }
+
+    private async Task RefreshDropContainerAsync()
+    {
         await InvokeAsync(() =>
         {
             _dropContainer?.Refresh();
