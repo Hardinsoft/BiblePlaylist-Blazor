@@ -1,0 +1,40 @@
+@* #42: confirm deleting a chapter from the playlist. Shown when the last
+   segment of a chapter is deleted, and from the empty-chapter
+   "Delete chapter" button. Dismissing keeps the chapter. *@
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">Delete chapter?</MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (WasLastSegment)
+        {
+            <MudText Typo="Typo.body1">
+                This was the last segment in @ChapterDisplay. Delete the chapter from the playlist as well?
+            </MudText>
+        }
+        else
+        {
+            <MudText Typo="Typo.body1">
+                Delete @ChapterDisplay from the playlist? This chapter has no segments.
+            </MudText>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton Color="Color.Secondary" OnClick="Cancel">Keep chapter</MudButton>
+        <MudButton Color="Color.Error" Variant="Variant.Filled" OnClick="ConfirmDelete">Delete chapter</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter]
+    public string ChapterDisplay { get; set; } = string.Empty;
+
+    [Parameter]
+    public bool WasLastSegment { get; set; }
+
+    private void ConfirmDelete() => MudDialog.Close(DialogResult.Ok(true));
+    private void Cancel() => MudDialog.Cancel();
+}
