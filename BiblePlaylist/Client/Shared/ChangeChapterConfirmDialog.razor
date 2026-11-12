@@ -1,0 +1,29 @@
+@* #41: warn before switching chapters in Edit mode — the segment being
+   edited belongs to the old chapter, so switching discards the changes.
+   Greg's call (2026-11-10): warn and confirm, not block. Dismissing or
+   cancelling keeps the user on the segment they were editing. *@
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">Change chapter?</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body1">
+            Changing chapters will discard your changes to this segment. Switch to @TargetChapter?
+        </MudText>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Color="Color.Secondary" OnClick="Cancel">Keep editing</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="ConfirmSwitch">Discard and switch</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter]
+    public string TargetChapter { get; set; } = string.Empty;
+
+    private void ConfirmSwitch() => MudDialog.Close(DialogResult.Ok(true));
+    private void Cancel() => MudDialog.Cancel();
+}

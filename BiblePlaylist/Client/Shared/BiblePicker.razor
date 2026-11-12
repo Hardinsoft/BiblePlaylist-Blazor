@@ -1,0 +1,108 @@
+@* #41: the book/chapter picker, split out of NavBibleMenu so it can live on
+   the edit segment page without the full-chapter audio player. NavBibleMenu
+   keeps its own inline picker + player for the Read page, untouched.
+   The picker only selects a chapter — the parent decides what a selection
+   means (the editor reloads for the chapter, warning first in Edit mode). *@
+@using BiblePlaylist.Shared.Navigation
+@using Microsoft.Extensions.Logging
+@inject HttpClient Http
+@inject ILogger<BiblePicker> logger
+
+@if (_loadFailed)
+{
+    <MudAlert Severity="Severity.Error" Dense="true">Could not load the Bible menu.</MudAlert>
+}
+else if (_bibleMenu == null)
+{
+    <MudText Typo="Typo.body2">Loading Bible menu...</MudText>
+}
+else
+{
+    <MudList T="string">
+        @foreach (var book in _bibleMenu.Books)
+        {
+            <MudListItem @onclick="() => ToggleBook(book.Number)" id="@book.Name.Replace(" ", "_")">
+                <MudText Typo="Typo.body1" Class="@(book.Number == SelectedBook ? "font-weight-bold" : "")">@book.Name</MudText>
+            </MudListItem>
+            @if (_expandedBook == book.Number)
+            {
+                <MudItem xs="12">
+                    <MudGrid>
+                        @foreach (var chapter in book.Chapters)
+                        {
+                            <MudItem md="1" xs="2">
+                                <MudPaper @onclick="() => SelectChapter(book.Number, book.Name, chapter.Number)"
+                                          Style="@(book.Number == SelectedBook && chapter.Number == SelectedChapter ? "cursor: pointer; background-color: rgba(var(--mud-palette-primary-rgb), 0.15); border: 1px solid var(--mud-palette-primary);" : "cursor: pointer")"
+                                          Class="d-flex align-center justify-center mud-width-full py-4">@chapter.Number</MudPaper>
+                            </MudItem>
+                        }
+                    </MudGrid>
+                </MudItem>
+            }
+        }
+    </MudList>
+}
+
+@code {
+    /// <summary>The book the editor is currently showing; its chapters start expanded.</summary>
+    [Parameter]
+    public int SelectedBook { get; set; }
+
+    /// <summary>The chapter the editor is currently showing; highlighted in the grid.</summary>
+    [Parameter]
+    public int SelectedChapter { get; set; }
+
+    /// <summary>Raised when the user picks a chapter: (book, book name, chapter).</summary>
+    [Parameter]
+    public EventCallback<(int Book, string BookName, int Chapter)> OnChapterSelected { get; set; }
+
+    private BibleMenu? _bibleMenu;
+    private bool _loadFailed;
+    private int _expandedBook;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _expandedBook = SelectedBook;
+        await LoadBibleMenuAsync();
+    }
+
+    protected override void OnParametersSet()
+    {
+        // The parent only changes the selection when the editor has moved to
+        // another chapter; keep that book's chapters expanded for it.
+        if (SelectedBook != 0 && SelectedBook != _expandedBook)
+            _expandedBook = SelectedBook;
+    }
+
+    private async Task LoadBibleMenuAsync()
+    {
+        try
+        {
+            var response = await Http.GetAsync($"BibleMenu?key={BiblePlaylist.Shared.Structs.BibleMenu.Name}");
+            if (!response.IsSuccessStatusCode)
+            {
+                _loadFailed = true;
+                return;
+            }
+
+            _bibleMenu = await response.Content.ReadFromJsonAsync<BibleMenu>();
+            if (_bibleMenu == null)
+                _loadFailed = true;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error loading Bible menu");
+            _loadFailed = true;
+        }
+    }
+
+    private void ToggleBook(int bookNumber)
+    {
+        _expandedBook = _expandedBook == bookNumber ? 0 : bookNumber;
+    }
+
+    private async Task SelectChapter(int bookNumber, string bookName, int chapterNumber)
+    {
+        await OnChapterSelected.InvokeAsync((bookNumber, bookName, chapterNumber));
+    }
+}

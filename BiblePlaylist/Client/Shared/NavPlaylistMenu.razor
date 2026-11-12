@@ -131,6 +131,15 @@
                                                                 <MudPaper Class="@($"pa-2 mb-2 {(IsCurrentSegment(context, segment) ? "current-segment mud-elevation-1" : "")}")"
                                                                           Style="border-radius: 4px; cursor: pointer;"
                                                                           @ondblclick="@(() => JumpToSegmentOnDoubleClick(context, segment))">
+                                                                    @* #39: the intro text is the segment card's
+                                                                       heading; the verse rows below are unchanged.
+                                                                       Centered, larger and bold so it reads as a
+                                                                       description introducing the Scripture, not
+                                                                       as Scripture itself. *@
+                                                                    @if (!string.IsNullOrWhiteSpace(segment.IntroText))
+                                                                    {
+                                                                        <MudText Style="text-align: center; font-size: 1.05rem; line-height: 1.55;" Class="mb-1 font-weight-bold">@segment.IntroText</MudText>
+                                                                    }
                                                                     <div class="d-flex justify-content-between verse-container">
                                                                         <div class="verse-list">
                                                                             @foreach (var verse in segment.Verses)
@@ -706,6 +715,15 @@
                 textsToSpeak.Add(selectedPlaylist.Description);
             }
 
+            // #39: the intro text is spoken first among the segment's own
+            // announcements — after the playlist Description (playlist-level,
+            // spoken once for the first segment), before the chapter and
+            // verse announcements.
+            if (!string.IsNullOrWhiteSpace(segment?.IntroText))
+            {
+                textsToSpeak.Add(segment.IntroText);
+            }
+
             if (!string.IsNullOrWhiteSpace(chapter?.VoiceText))
             {
                 textsToSpeak.Add(chapter.VoiceText);
@@ -927,28 +945,16 @@
         NavManager.NavigateTo($"/edit-segment?{query}");
     }
 
-    // #37: one-time explainer for adding a segment in a new chapter.
-    // First click shows the explainer dialog; once the user has used it,
-    // the button goes straight to the Read page.
-    private bool? _addSegmentHelpSeen;
-
-    private async Task NavigateToAddNewChapterSegment()
+    // Adding a segment to a new chapter starts in the editor, not on the
+    // Read page: the playlist is already known (you came from it), so there
+    // is no playlist to pick. book/chapter 0 means "no chapter yet" — the
+    // editor opens on the chapter picker instead of a chapter.
+    private void NavigateToAddNewChapterSegment()
     {
-        _addSegmentHelpSeen ??= await localStorage.GetItemAsync<bool>("userName_addSegmentHelpSeen");
-        if (_addSegmentHelpSeen == true)
-        {
-            NavManager.NavigateTo("/");
-            return;
-        }
-
-        var dialog = await DialogService.ShowAsync<AddSegmentHelpDialog>("Add a segment");
-        var result = await dialog.Result;
-        if (result is { Canceled: false, Data: true })
-        {
-            _addSegmentHelpSeen = true;
-            await localStorage.SetItemAsync("userName_addSegmentHelpSeen", true);
-            NavManager.NavigateTo("/");
-        }
+        var playlistKey = GetPlaylistKey();
+        var libraryCode = Library?.Code ?? string.Empty;
+        var query = $"library={System.Net.WebUtility.UrlEncode(libraryCode)}&book=0&chapter=0&playlist={System.Net.WebUtility.UrlEncode(playlistKey)}";
+        NavManager.NavigateTo($"/edit-segment?{query}");
     }
 
     private void NavigateToEdit(BookChapter chapter, Segment segment)

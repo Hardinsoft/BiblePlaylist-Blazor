@@ -8,6 +8,7 @@ using Microsoft.Extensions.Hosting;
 using System.Linq;
 using BiblePlaylist.Server.Data;
 using System;
+using System.Text;
 using BiblePlaylist.Shared.Structs;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
@@ -86,6 +87,65 @@ namespace BiblePlaylist.Server
             {
                 app.UseDeveloperExceptionPage();
                 app.UseWebAssemblyDebugging();
+
+                // Debug cache buster: the <Version> injection in
+                // BiblePlaylist.Client.csproj only runs on Publish, so in debug the
+                // served index.html still carries the literal {{CACHE_BUST_VERSION}}
+                // placeholder and browsers keep caching the framework files across
+                // rebuilds. The dev server serves index.html straight from the
+                // Client's source wwwroot (there is no build-output copy to rewrite),
+                // so replace the placeholder in the served page instead, with a
+                // timestamp taken once when the server starts. Every debug run gets
+                // fresh files; nothing is written to disk and Publish is untouched.
+                // The debug proxy (/_framework/debug) and static assets (/_content)
+                // are excluded: the proxy upgrades the connection to a websocket and
+                // must keep the real response stream.
+                var debugCacheBustVersion = DateTime.UtcNow.ToString("yyyyMMddHHmmss");
+                app.Use(async (context, next) =>
+                {
+                    var path = context.Request.Path.Value ?? string.Empty;
+                    var extension = Path.GetExtension(path);
+                    var isHtmlCandidate = path.EndsWith(".html", StringComparison.OrdinalIgnoreCase)
+                        || string.IsNullOrEmpty(extension);
+                    if (path.StartsWith("/_framework", StringComparison.OrdinalIgnoreCase)
+                        || path.StartsWith("/_content", StringComparison.OrdinalIgnoreCase)
+                        || !isHtmlCandidate)
+                    {
+                        await next();
+                        return;
+                    }
+
+                    var originalBody = context.Response.Body;
+                    await using var buffer = new MemoryStream();
+                    context.Response.Body = buffer;
+                    await next();
+                    context.Response.Body = originalBody;
+
+                    var servedBytes = buffer.ToArray();
+                    var isHtml = context.Response.StatusCode == 200
+                        && context.Response.ContentType != null
+                        && context.Response.ContentType.StartsWith("text/html", StringComparison.OrdinalIgnoreCase);
+                    if (!isHtml)
+                    {
+                        await originalBody.WriteAsync(servedBytes);
+                        return;
+                    }
+
+                    var html = Encoding.UTF8.GetString(servedBytes);
+                    if (!html.Contains("{{CACHE_BUST_VERSION}}", StringComparison.Ordinal))
+                    {
+                        await originalBody.WriteAsync(servedBytes);
+                        return;
+                    }
+
+                    html = html.Replace("{{CACHE_BUST_VERSION}}", debugCacheBustVersion);
+                    var outBytes = Encoding.UTF8.GetBytes(html);
+                    if (!context.Response.HasStarted)
+                    {
+                        context.Response.ContentLength = outBytes.Length;
+                    }
+                    await originalBody.WriteAsync(outBytes);
+                });
             }
             else
             {

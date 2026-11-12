@@ -95,8 +95,8 @@ namespace BiblePlaylist.Tests
 
         // #42: chapters as the library GET returns them (segments without
         // verses; inflate fills those in).
-        private static Segment PlainSegment(int id, int start, int end) =>
-            new Segment { Id = id, VerseStart = start, VerseEnd = end };
+        private static Segment PlainSegment(int id, int start, int end, string? introText = null) =>
+            new Segment { Id = id, VerseStart = start, VerseEnd = end, IntroText = introText };
 
         private static BookChapter JohnSingleSegmentChapter() => new BookChapter
         {
@@ -131,8 +131,16 @@ namespace BiblePlaylist.Tests
             ChapterNumber = chapter.ChapterNumber,
             BookName = chapter.BookName,
             ChapterAudioUrl = chapter.ChapterAudioUrl,
+            // #39: inflate rebuilds the segments, so the intro text must be
+            // carried over (as the server's Inflate does) or the menu would
+            // never see it.
             Segments = chapter.Segments?
-                .Select(s => SegmentWithVerses(s.Id, s.VerseStart, s.VerseEnd))
+                .Select(s =>
+                {
+                    var inflated = SegmentWithVerses(s.Id, s.VerseStart, s.VerseEnd);
+                    inflated.IntroText = s.IntroText;
+                    return inflated;
+                })
                 .ToList() ?? new List<Segment>()
         };
 
@@ -142,7 +150,7 @@ namespace BiblePlaylist.Tests
         /// Waits until inflate has completed (verse rows only render then).
         /// </summary>
         private IRenderedComponent<BiblePlaylist.Client.Shared.NavPlaylistMenu> RenderMenu(
-            List<BookChapter> chapters, int book, int chapter, int segmentId = 0)
+            List<BookChapter> chapters, int book, int chapter, int segmentId = 0, string? description = "Test playlist")
         {
             var library = new Library
             {
@@ -153,7 +161,7 @@ namespace BiblePlaylist.Tests
                     {
                         Key = "test-key",
                         Name = "Test Playlist",
-                        Description = "Test playlist",
+                        Description = description,
                         BookChapters = chapters
                     }
                 }
@@ -434,13 +442,15 @@ namespace BiblePlaylist.Tests
         }
 
         /// <summary>
-        /// #37: the playlist-level "Add segment to a new chapter" button
-        /// shows the one-time explainer dialog on first click.
+        /// Adding a segment to a new chapter from the playlist goes straight
+        /// to the editor in Create mode with the playlist already set — no
+        /// explainer dialog, no trip to the Read page, no playlist to pick.
+        /// The editor opens with no chapter (book/chapter 0), so its chapter
+        /// picker is the entry point.
         /// </summary>
         [Fact]
-        public void Playlist_AddSegmentToNewChapter_FirstClick_ShowsExplainerDialog()
+        public void Playlist_AddSegmentToNewChapter_NavigatesToEditorCreateMode()
         {
-            var provider = RenderComponent<MudDialogProvider>();
             var cut = RenderReturnMenu();
             try
             {
@@ -450,64 +460,21 @@ namespace BiblePlaylist.Tests
                 addButton!.Click();
 
                 cut.WaitForAssertion(() =>
-                    Assert.Contains("Pick the chapter on the Read page", provider.Markup),
-                    TimeSpan.FromSeconds(5));
-            }
-            finally { StopTimer(cut); }
-        }
-
-        /// <summary>
-        /// #37: choosing "Go to Read page" in the explainer navigates to the
-        /// Read page, remembers the explainer was used, and the next click
-        /// on the button goes straight to the Read page without the dialog.
-        /// </summary>
-        [Fact]
-        public void Playlist_AddSegmentToNewChapter_DialogGo_NavigatesAndSecondClickGoesDirect()
-        {
-            var provider = RenderComponent<MudDialogProvider>();
-            var cut = RenderReturnMenu();
-            try
-            {
-                var addButton = cut.FindAll("button")
-                    .First(b => b.TextContent.Contains("Add segment to a new chapter"));
-                addButton.Click();
-
-                cut.WaitForAssertion(() =>
-                    Assert.Contains("Pick the chapter on the Read page", provider.Markup),
-                    TimeSpan.FromSeconds(5));
-
-                var goButton = provider.FindAll("button")
-                    .First(b => b.TextContent.Contains("Go to Read page"));
-                goButton.Click();
-
-                cut.WaitForAssertion(() =>
-                    Assert.Equal("http://localhost/",
+                    Assert.Equal("http://localhost/edit-segment?library=library_greg_hardin_live_com&book=0&chapter=0&playlist=test-key",
                         Services.GetRequiredService<NavigationManager>().Uri),
                     TimeSpan.FromSeconds(5));
-                cut.WaitForAssertion(() =>
-                    Assert.DoesNotContain("Pick the chapter on the Read page", provider.Markup),
-                    TimeSpan.FromSeconds(5));
 
-                // The one-time flag was persisted.
-                Assert.Contains(JSRuntime.Invocations, i =>
+                // No explainer dialog, no one-time flag: the button no longer
+                // routes through the Read page at all.
+                Assert.DoesNotContain("Pick the chapter on the Read page", cut.Markup);
+                Assert.DoesNotContain(JSRuntime.Invocations, i =>
                     i.Method == "localStorage.setItem" &&
                     i.Args.Length >= 1 &&
                     i.Args[0]?.ToString() == "userName_addSegmentHelpSeen");
-
-                // Second click: straight to the Read page, no dialog again.
-                var navManager = Services.GetRequiredService<NavigationManager>();
-                navManager.NavigateTo("/playlists?playlist=test-key&library=library_greg_hardin_live_com&book=43&chapter=1&segmentId=2");
-                addButton = cut.FindAll("button")
-                    .First(b => b.TextContent.Contains("Add segment to a new chapter"));
-                addButton.Click();
-
-                cut.WaitForAssertion(() =>
-                    Assert.Equal("http://localhost/", navManager.Uri),
-                    TimeSpan.FromSeconds(5));
-                Assert.DoesNotContain("Pick the chapter on the Read page", provider.Markup);
             }
             finally { StopTimer(cut); }
         }
+
 
         /// <summary>
         /// #42: deleting the last segment of a chapter prompts to delete the
@@ -734,33 +701,145 @@ namespace BiblePlaylist.Tests
         }
 
         /// <summary>
-        /// #42: cancelling the chapter menu's delete keeps the chapter and
-        /// its segments, and saves nothing. Uses the one-segment chapter, so
-        /// the dialog's singular wording is covered too.
+        /// #39: a segment with intro text shows it as the card's heading,
+        /// above the verse rows. The intro is a description introducing the
+        /// Scripture, not Scripture itself, so the heading is centered, bold,
+        /// and the same size as the verse text. Asserted by the visible
+        /// outcome, not by which MudBlazor Typo renders it, so a styling
+        /// change that keeps the outcome does not break the test.
         /// </summary>
         [Fact]
-        public async Task ChapterMenu_DeleteChapter_CancelKeepsChapter()
+        public void SegmentCard_WithIntroText_ShowsItAsHeading()
         {
-            var provider = RenderComponent<MudDialogProvider>();
-            var cut = RenderMenu(new List<BookChapter> { JohnSingleSegmentChapter(), LukeTwoSegmentChapter() },
+            var chapter = new BookChapter
+            {
+                BookNumber = 43,
+                ChapterNumber = 1,
+                BookName = "John",
+                ChapterAudioUrl = "43-John-01.mp3",
+                Segments = new List<Segment> { PlainSegment(1, 1, 2, "The fall of man") }
+            };
+            var cut = RenderMenu(new List<BookChapter> { chapter }, book: 43, chapter: 1);
+            try
+            {
+                Assert.Contains("The fall of man", cut.Markup);
+                Assert.Contains("Verse 1 text.", cut.Markup);
+
+                var heading = cut.FindAll(".font-weight-bold")
+                    .First(e => e.TextContent.Contains("The fall of man"));
+                Assert.Contains("font-weight-bold", heading.GetAttribute("class"));
+                Assert.Contains("text-align: center", heading.GetAttribute("style"));
+                Assert.Contains("font-size: 1.05rem", heading.GetAttribute("style"));
+
+                // The heading matches the verse text size (the requirement),
+                // rather than a larger heading size.
+                var verseText = cut.Find(".verse-text");
+                Assert.Contains("font-size: 1.05rem", verseText.GetAttribute("style"));
+            }
+            finally { StopTimer(cut); }
+        }
+
+        /// <summary>
+        /// #39: a segment without intro text renders the card as today — no
+        /// heading, verse rows unchanged.
+        /// </summary>
+        [Fact]
+        public void SegmentCard_WithoutIntroText_HasNoHeading()
+        {
+            var cut = RenderMenu(new List<BookChapter> { JohnSingleSegmentChapter() },
+                book: 43, chapter: 1);
+            try
+            {
+                Assert.Contains("Verse 1 text.", cut.Markup);
+                Assert.DoesNotContain("The fall of man", cut.Markup);
+            }
+            finally { StopTimer(cut); }
+        }
+
+        private List<string> GetSpokenTexts()
+        {
+            var speak = JSRuntime.Invocations.Single(i => i.Method == "speakSequenceAsync");
+            return Assert.IsAssignableFrom<IEnumerable<string>>(speak.Args[0]).ToList();
+        }
+
+        private IRenderedComponent<BiblePlaylist.Client.Shared.NavPlaylistMenu> RenderIntroMenu(string? description)
+        {
+            var chapter = new BookChapter
+            {
+                BookNumber = 43,
+                ChapterNumber = 1,
+                BookName = "John",
+                ChapterAudioUrl = "43-John-01.mp3",
+                Segments = new List<Segment> { PlainSegment(1, 1, 2, "The fall of man") }
+            };
+            // segmentId 1 makes the intro segment the pending (then current)
+            // segment, so Play speaks for it.
+            return RenderMenu(new List<BookChapter> { chapter }, book: 43, chapter: 1,
+                segmentId: 1, description: description);
+        }
+
+        /// <summary>
+        /// #39: with an intro and no playlist description, playback TTS is
+        /// exactly intro, then chapter, then verses.
+        /// </summary>
+        [Fact]
+        public void PlayCurrentSegment_WithIntroText_SpeaksIntroFirst()
+        {
+            var cut = RenderIntroMenu(description: null);
+            try
+            {
+                cut.Find("[aria-label='Play audio']").Click();
+                cut.WaitForAssertion(() => Assert.Equal(0, GetInt(cut, "_currentSegmentIndex")),
+                    TimeSpan.FromSeconds(5));
+
+                var expectedChapter = new BookChapter { BookName = "John", ChapterNumber = 1 }.VoiceText;
+                var expectedSegment = new Segment { VerseStart = 1, VerseEnd = 2 }.VoiceText;
+                Assert.Equal(new[] { "The fall of man", expectedChapter, expectedSegment }, GetSpokenTexts());
+            }
+            finally { StopTimer(cut); }
+        }
+
+        /// <summary>
+        /// #39: the playlist Description (first segment only) stays before
+        /// the intro — playlist-level first, then the section heading, then
+        /// chapter and verses.
+        /// </summary>
+        [Fact]
+        public void PlayCurrentSegment_WithDescriptionAndIntro_SpeaksDescriptionThenIntro()
+        {
+            var cut = RenderIntroMenu(description: "Test playlist");
+            try
+            {
+                cut.Find("[aria-label='Play audio']").Click();
+                cut.WaitForAssertion(() => Assert.Equal(0, GetInt(cut, "_currentSegmentIndex")),
+                    TimeSpan.FromSeconds(5));
+
+                var expectedChapter = new BookChapter { BookName = "John", ChapterNumber = 1 }.VoiceText;
+                var expectedSegment = new Segment { VerseStart = 1, VerseEnd = 2 }.VoiceText;
+                Assert.Equal(new[] { "Test playlist", "The fall of man", expectedChapter, expectedSegment },
+                    GetSpokenTexts());
+            }
+            finally { StopTimer(cut); }
+        }
+
+        /// <summary>
+        /// #39: with no intro text the playback sequence is exactly today's
+        /// (description, chapter, verses) — no empty first entry.
+        /// </summary>
+        [Fact]
+        public void PlayCurrentSegment_WithoutIntroText_SequenceUnchanged()
+        {
+            var cut = RenderMenu(new List<BookChapter> { JohnSingleSegmentChapter() },
                 book: 43, chapter: 1, segmentId: 1);
             try
             {
-                var deleteTask = StartDeleteChapterAsync(cut, chapterIndex: 0);
-
-                cut.WaitForAssertion(() =>
-                    Assert.Contains("and its 1 segment from the playlist?", provider.Markup),
+                cut.Find("[aria-label='Play audio']").Click();
+                cut.WaitForAssertion(() => Assert.Equal(0, GetInt(cut, "_currentSegmentIndex")),
                     TimeSpan.FromSeconds(5));
 
-                ClickDialogButton(provider, "Keep chapter");
-
-                cut.WaitForAssertion(() =>
-                    Assert.DoesNotContain("and its 1 segment from the playlist?", provider.Markup),
-                    TimeSpan.FromSeconds(5));
-                Assert.DoesNotContain(HttpHandler.Requests, r => r.Method == HttpMethod.Put);
-                Assert.Contains("John 1", cut.Markup);
-
-                await deleteTask;
+                var expectedChapter = new BookChapter { BookName = "John", ChapterNumber = 1 }.VoiceText;
+                var expectedSegment = new Segment { VerseStart = 1, VerseEnd = 2 }.VoiceText;
+                Assert.Equal(new[] { "Test playlist", expectedChapter, expectedSegment }, GetSpokenTexts());
             }
             finally { StopTimer(cut); }
         }

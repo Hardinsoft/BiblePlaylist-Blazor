@@ -49,6 +49,20 @@ namespace BiblePlaylist.Shared.Playlist
         public IList<Verse> Verses { get; set; }
         public int VerseStart { get; set; }
         public int VerseEnd {  get; set; }
+
+        /// <summary>
+        /// #39: optional custom text for a segment (e.g. a Romans Road section
+        /// heading like "The fall of man"). When non-empty it is spoken first
+        /// (before the chapter and verse announcements, when TTS is on) and
+        /// shown as the segment card's heading. Null — including a library
+        /// JSON written before this existed — means today's behavior.
+        /// Omitted from the saved JSON when null, so clearing it in the
+        /// editor removes it from the file. Plain string (not string?): the
+        /// Shared project has no &lt;Nullable&gt; annotations.
+        /// </summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        [Newtonsoft.Json.JsonProperty(NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        public string IntroText { get; set; }
         private string BuildVoiceText()
         {
             if (_voiceText != null)
