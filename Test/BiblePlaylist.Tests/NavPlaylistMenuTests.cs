@@ -703,8 +703,10 @@ namespace BiblePlaylist.Tests
         /// <summary>
         /// #39: a segment with intro text shows it as the card's heading,
         /// above the verse rows. The intro is a description introducing the
-        /// Scripture, not Scripture itself, so the heading is centered,
-        /// larger and bold.
+        /// Scripture, not Scripture itself, so the heading is centered, bold,
+        /// and the same size as the verse text. Asserted by the visible
+        /// outcome, not by which MudBlazor Typo renders it, so a styling
+        /// change that keeps the outcome does not break the test.
         /// </summary>
         [Fact]
         public void SegmentCard_WithIntroText_ShowsItAsHeading()
@@ -723,10 +725,16 @@ namespace BiblePlaylist.Tests
                 Assert.Contains("The fall of man", cut.Markup);
                 Assert.Contains("Verse 1 text.", cut.Markup);
 
-                var heading = cut.Find(".mud-typography-h6");
-                Assert.Contains("The fall of man", heading.TextContent);
+                var heading = cut.FindAll(".font-weight-bold")
+                    .First(e => e.TextContent.Contains("The fall of man"));
                 Assert.Contains("font-weight-bold", heading.GetAttribute("class"));
                 Assert.Contains("text-align: center", heading.GetAttribute("style"));
+                Assert.Contains("font-size: 1.05rem", heading.GetAttribute("style"));
+
+                // The heading matches the verse text size (the requirement),
+                // rather than a larger heading size.
+                var verseText = cut.Find(".verse-text");
+                Assert.Contains("font-size: 1.05rem", verseText.GetAttribute("style"));
             }
             finally { StopTimer(cut); }
         }
