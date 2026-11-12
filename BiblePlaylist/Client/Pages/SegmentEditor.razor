@@ -27,9 +27,23 @@
     }
     else if (!chapterLoaded)
     {
-        <MudAlert Severity="Severity.Error">
-            Could not load chapter @Book @Chapter.
-        </MudAlert>
+        @if (Book <= 0 || Chapter <= 0)
+        {
+            @* New-chapter segment from the playlist: no chapter yet, so
+               pick one first. The playlist is already set on the URL. *@
+            <MudText Typo="Typo.h5" Class="mb-3">Choose a chapter</MudText>
+            <MudText Class="mb-3">Pick the chapter for the new segment.</MudText>
+            <MudPaper Class="pa-2 mb-3" Elevation="1">
+                <BiblePicker SelectedBook="Book" SelectedChapter="Chapter" OnChapterSelected="OnChapterSelected" />
+            </MudPaper>
+            <MudButton Variant="Variant.Text" Color="Color.Secondary" OnClick="CancelEdit">Cancel</MudButton>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Error">
+                Could not load chapter @Book @Chapter.
+            </MudAlert>
+        }
     }
     else
     {
@@ -221,6 +235,15 @@
 
     private async Task LoadChapterAsync()
     {
+        // A new-chapter segment from the playlist opens the editor with no
+        // chapter yet (book/chapter 0): there is nothing to load — the
+        // chapter picker below is the entry point, not an error.
+        if (Book <= 0 || Chapter <= 0)
+        {
+            chapterLoaded = false;
+            return;
+        }
+
         try
         {
             var response = await Http.GetAsync($"Version?key={BiblePlaylist.Shared.Structs.Version.NET}&Book={Book}&Chapter={Chapter}");

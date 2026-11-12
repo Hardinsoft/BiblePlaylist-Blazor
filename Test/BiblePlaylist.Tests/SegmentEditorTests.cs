@@ -1175,6 +1175,73 @@ namespace BiblePlaylist.Tests
         }
 
         /// <summary>
+        /// A new-chapter segment from the playlist opens the editor with no
+        /// chapter yet (book/chapter 0): the chapter picker is the entry
+        /// point — not the load-failure alert — and no chapter is fetched.
+        /// </summary>
+        [Fact]
+        public void Editor_CreateMode_NoChapter_ShowsChapterPicker()
+        {
+            SetupBibleMenuResponse();
+
+            var cut = RenderEditor(0, 0, "test-playlist");
+            cut.WaitForAssertion(() => Assert.Contains("John", cut.Markup), TimeSpan.FromSeconds(5));
+
+            Assert.Contains("Choose a chapter", cut.Markup);
+            Assert.DoesNotContain("Could not load chapter", cut.Markup);
+            Assert.DoesNotContain(HttpHandler.Requests,
+                req => req.Method == HttpMethod.Get &&
+                       req.RequestUri?.AbsoluteUri.Contains("Version?") == true);
+        }
+
+        /// <summary>
+        /// In the no-chapter entry, picking a chapter navigates to the
+        /// editor for that chapter in Create mode, with the playlist carried
+        /// through and segmentId/selectStart/selectEnd set to 0.
+        /// </summary>
+        [Fact]
+        public async Task Editor_CreateMode_NoChapter_PickChapter_NavigatesToCreateUrl()
+        {
+            SetupBibleMenuResponse();
+
+            var cut = RenderEditor(0, 0, "test-playlist");
+            cut.WaitForAssertion(() => Assert.Contains("John", cut.Markup), TimeSpan.FromSeconds(5));
+
+            await PickChapterInPicker(cut, "John", 2);
+            cut.WaitForAssertion(() =>
+            {
+                var uri = Services.GetRequiredService<NavigationManager>().Uri;
+                Assert.Contains("/edit-segment?", uri);
+                Assert.Contains("book=43", uri);
+                Assert.Contains("chapter=2", uri);
+                Assert.Contains("playlist=test-playlist", uri);
+                Assert.Contains("segmentId=0", uri);
+                Assert.Contains("selectStart=0", uri);
+                Assert.Contains("selectEnd=0", uri);
+            }, TimeSpan.FromSeconds(5));
+        }
+
+        /// <summary>
+        /// In the no-chapter entry, Cancel returns to the playlist the
+        /// segment was being added to.
+        /// </summary>
+        [Fact]
+        public async Task Editor_CreateMode_NoChapter_Cancel_ReturnsToPlaylist()
+        {
+            SetupBibleMenuResponse();
+
+            var cut = RenderEditor(0, 0, "test-playlist");
+            cut.WaitForAssertion(() => Assert.Contains("John", cut.Markup), TimeSpan.FromSeconds(5));
+
+            await cut.InvokeAsync(() =>
+            {
+                cut.FindAll("button").First(b => b.TextContent.Contains("Cancel")).Click();
+            });
+
+            Assert.Contains("/playlists?playlist=test-playlist", Services.GetRequiredService<NavigationManager>().Uri);
+        }
+
+        /// <summary>
         /// #41: when the editor's parameters change to another chapter (the
         /// chapter-switch navigation), it reloads for that chapter: the
         /// chapter reference updates and the selection and intro text start
