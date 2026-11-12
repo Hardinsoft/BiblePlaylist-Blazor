@@ -173,6 +173,9 @@
     // #37: the Read page can pre-select a verse range for a new segment.
     [Parameter] [SupplyParameterFromQuery] public int SelectStart { get; set; }
     [Parameter] [SupplyParameterFromQuery] public int SelectEnd { get; set; }
+    // #45: set to 1 when the editor was entered from the playlist's edit mode.
+    // Carried through to the return URL so the playlist restores edit mode.
+    [Parameter] [SupplyParameterFromQuery] public int Edit { get; set; }
 
     private decimal _segmentStartAudio;
     private decimal _segmentEndAudio;
@@ -644,6 +647,9 @@
                     $"&book={book}&chapter={chapter}" +
                     $"&playlist={System.Net.WebUtility.UrlEncode(Playlist ?? string.Empty)}" +
                     "&segmentId=0&selectStart=0&selectEnd=0";
+        // #45: preserve the edit flag on a chapter switch.
+        if (Edit != 0)
+            query += "&edit=1";
         return $"/edit-segment?{query}";
     }
 
@@ -779,6 +785,9 @@
         var query = $"playlist={System.Net.WebUtility.UrlEncode(Playlist)}&library={System.Net.WebUtility.UrlEncode(LibraryCode ?? string.Empty)}&book={Book}&chapter={Chapter}";
         if (segmentId > 0)
             query += $"&segmentId={segmentId}";
+        // #45: carry the edit flag back so the playlist restores edit mode.
+        if (Edit != 0)
+            query += "&edit=1";
         return $"/playlists?{query}";
     }
 

@@ -188,7 +188,7 @@ namespace BiblePlaylist.Tests
         }
 
         private IRenderedComponent<BiblePlaylist.Client.Pages.SegmentEditor> RenderEditor(int book, int chapter,
-            string? playlist = null, int? segmentId = null, int? selectStart = null, int? selectEnd = null, string libraryCode = "test-library")
+            string? playlist = null, int? segmentId = null, int? selectStart = null, int? selectEnd = null, string libraryCode = "test-library", int? edit = null)
         {
             var ps = new List<ComponentParameter>
             {
@@ -208,6 +208,10 @@ namespace BiblePlaylist.Tests
             {
                 ps.Add(ComponentParameter.CreateParameter("SelectStart", selectStart.Value));
                 ps.Add(ComponentParameter.CreateParameter("SelectEnd", selectEnd.Value));
+            }
+            if (edit.HasValue)
+            {
+                ps.Add(ComponentParameter.CreateParameter("Edit", edit.Value));
             }
             return RenderComponent<BiblePlaylist.Client.Pages.SegmentEditor>(ps.ToArray());
         }
@@ -1335,6 +1339,101 @@ namespace BiblePlaylist.Tests
                 Assert.Contains("book=43", uri);
                 Assert.Contains("chapter=2", uri);
                 Assert.Contains("segmentId=0", uri);
+            }, TimeSpan.FromSeconds(5));
+        }
+
+        /// <summary>
+        /// #45: saving from the editor entered in edit mode carries edit=1
+        /// through the return URL, so the playlist restores edit mode.
+        /// </summary>
+        [Fact]
+        public async Task Editor_Save_WithEditFlag_ReturnUrlCarriesEditFlag()
+        {
+            SetupVersionResponse(1, 5);
+            SetupLibraryResponse("test-playlist", 1, 5, new List<Segment>());
+
+            var cut = RenderEditor(1, 5, "test-playlist", edit: 1);
+            await cut.InvokeAsync(() => Task.Delay(50));
+
+            SetSelectedVerses(cut, new[] { 1, 2 });
+            await ClickSave(cut);
+
+            cut.WaitForAssertion(() =>
+            {
+                var uri = Services.GetRequiredService<NavigationManager>().Uri;
+                Assert.Contains("/playlists?playlist=test-playlist", uri);
+                Assert.Contains("edit=1", uri);
+            }, TimeSpan.FromSeconds(5));
+        }
+
+        /// <summary>
+        /// #45: cancelling from the editor entered in edit mode carries edit=1
+        /// through the return URL as well.
+        /// </summary>
+        [Fact]
+        public async Task Editor_Cancel_WithEditFlag_ReturnUrlCarriesEditFlag()
+        {
+            SetupVersionResponse(1, 5);
+            SetupLibraryResponse("test-playlist", 1, 5, new List<Segment>());
+
+            var cut = RenderEditor(1, 5, "test-playlist", edit: 1);
+            await cut.InvokeAsync(() => Task.Delay(50));
+
+            await cut.InvokeAsync(() =>
+            {
+                cut.FindAll("button").First(b => b.TextContent.Contains("Cancel")).Click();
+            });
+
+            var uri = Services.GetRequiredService<NavigationManager>().Uri;
+            Assert.Contains("/playlists?playlist=test-playlist", uri);
+            Assert.Contains("edit=1", uri);
+        }
+
+        /// <summary>
+        /// #45: switching chapters in the editor entered in edit mode
+        /// preserves edit=1 in the new editor URL.
+        /// </summary>
+        [Fact]
+        public async Task Editor_ChangeChapter_WithEditFlag_NewUrlPreservesEditFlag()
+        {
+            SetupVersionResponse(1, 5);
+            SetupBibleMenuResponse();
+
+            var cut = RenderEditor(1, 5, "test-playlist", edit: 1);
+            await cut.InvokeAsync(() => Task.Delay(50));
+
+            await ClickChangeChapter(cut);
+            await PickChapterInPicker(cut, "John", 2);
+            await cut.InvokeAsync(() => Task.Delay(50));
+
+            var uri = Services.GetRequiredService<NavigationManager>().Uri;
+            Assert.Contains("/edit-segment?", uri);
+            Assert.Contains("book=43", uri);
+            Assert.Contains("chapter=2", uri);
+            Assert.Contains("edit=1", uri);
+        }
+
+        /// <summary>
+        /// #45: without the edit flag, the return URL does not gain one —
+        /// the flag is only carried when the editor was entered from edit mode.
+        /// </summary>
+        [Fact]
+        public async Task Editor_Save_WithoutEditFlag_ReturnUrlHasNoEditFlag()
+        {
+            SetupVersionResponse(1, 5);
+            SetupLibraryResponse("test-playlist", 1, 5, new List<Segment>());
+
+            var cut = RenderEditor(1, 5, "test-playlist");
+            await cut.InvokeAsync(() => Task.Delay(50));
+
+            SetSelectedVerses(cut, new[] { 1, 2 });
+            await ClickSave(cut);
+
+            cut.WaitForAssertion(() =>
+            {
+                var uri = Services.GetRequiredService<NavigationManager>().Uri;
+                Assert.Contains("/playlists?playlist=test-playlist", uri);
+                Assert.DoesNotContain("edit=1", uri);
             }, TimeSpan.FromSeconds(5));
         }
     }

@@ -1,0 +1,43 @@
+@* #45: confirm deleting a playlist from the library. The deletion is
+   permanent (the library is a single JSON file; there is no trash or
+   restore). Dismissing keeps the playlist. *@
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">Delete playlist?</MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (ChapterCount == 0)
+        {
+            <MudText Typo="Typo.body1">
+                Delete @PlaylistName from the library? It has no chapters. This cannot be undone.
+            </MudText>
+        }
+        else
+        {
+            <MudText Typo="Typo.body1">
+                Delete @PlaylistName and its @(ChapterCount == 1 ? "1 chapter" : $"{ChapterCount} chapters") (@(SegmentCount == 1 ? "1 segment" : $"{SegmentCount} segments")) from the library? This cannot be undone.
+            </MudText>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton Color="Color.Secondary" OnClick="Cancel">Keep playlist</MudButton>
+        <MudButton Color="Color.Error" Variant="Variant.Filled" OnClick="ConfirmDelete">Delete playlist</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter]
+    public string PlaylistName { get; set; } = string.Empty;
+
+    [Parameter]
+    public int ChapterCount { get; set; }
+
+    [Parameter]
+    public int SegmentCount { get; set; }
+
+    private void ConfirmDelete() => MudDialog.Close(DialogResult.Ok(true));
+    private void Cancel() => MudDialog.Cancel();
+}
