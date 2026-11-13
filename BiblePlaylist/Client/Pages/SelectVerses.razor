@@ -1,4 +1,4 @@
-@page "/edit-segment"
+@page "/select-verses"
 @implements IDisposable
 @using BiblePlaylist.Client.Events
 @using BiblePlaylist.Client.Shared
@@ -13,7 +13,7 @@
 @inject HttpClient Http
 @inject Blazored.LocalStorage.ILocalStorageService localStorage
 @inject IJSRuntime JSRuntime
-@inject ILogger<SegmentEditor> logger
+@inject ILogger<SelectVerses> logger
 @inject IDelegateLibrary delegateLibrary
 @inject Config.Endpoints endpoints
 @inject NavigationManager NavManager
@@ -182,7 +182,7 @@
     private string _chapterAudioUrl = string.Empty;
     private string _bookName = "";
     private System.Timers.Timer? _playbackTimer;
-    private DotNetObjectReference<SegmentEditor>? _dotNetRef;
+    private DotNetObjectReference<SelectVerses>? _dotNetRef;
 
     protected override async Task OnInitializedAsync()
     {
@@ -650,7 +650,7 @@
         // #45: preserve the edit flag on a chapter switch.
         if (Edit != 0)
             query += "&edit=1";
-        return $"/edit-segment?{query}";
+        return $"/select-verses?{query}";
     }
 
     private async Task PersistSegmentAsync(Segment segment)

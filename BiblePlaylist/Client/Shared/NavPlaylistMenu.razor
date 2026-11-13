@@ -233,9 +233,9 @@
                                                                             <MudMenu Icon="@Icons.Material.Filled.MoreVert"
                                                                                      AriaLabel="Segment options"
                                                                                      @onclick:stopPropagation="true">
-                                                                                <MudMenuItem Label="Edit segment"
+                                                                                <MudMenuItem Label="Select Verses"
                                                                                              @onclick="() => NavigateToEdit(context, segment)" />
-                                                                                <MudMenuItem Label="Delete segment"
+                                                                                <MudMenuItem Label="Remove Verses"
                                                                                              Style="color: var(--mud-palette-error);"
                                                                                              @onclick="() => DeleteSegment(context, segment)" />
                                                                             </MudMenu>
@@ -1057,7 +1057,7 @@
         var playlistKey = GetPlaylistKey();
         var libraryCode = Library?.Code ?? string.Empty;
         var query = $"library={System.Net.WebUtility.UrlEncode(libraryCode)}&book={chapter.BookNumber}&chapter={chapter.ChapterNumber}&playlist={System.Net.WebUtility.UrlEncode(playlistKey)}";
-        NavManager.NavigateTo($"/edit-segment?{query}{EditModeQueryParam()}");
+        NavManager.NavigateTo($"/select-verses?{query}{EditModeQueryParam()}");
     }
 
     // Adding a segment to a new chapter starts in the editor, not on the
@@ -1069,7 +1069,7 @@
         var playlistKey = GetPlaylistKey();
         var libraryCode = Library?.Code ?? string.Empty;
         var query = $"library={System.Net.WebUtility.UrlEncode(libraryCode)}&book=0&chapter=0&playlist={System.Net.WebUtility.UrlEncode(playlistKey)}";
-        NavManager.NavigateTo($"/edit-segment?{query}{EditModeQueryParam()}");
+        NavManager.NavigateTo($"/select-verses?{query}{EditModeQueryParam()}");
     }
 
     private void NavigateToEdit(BookChapter chapter, Segment segment)
@@ -1077,7 +1077,7 @@
         var playlistKey = GetPlaylistKey();
         var libraryCode = Library?.Code ?? string.Empty;
         var query = $"library={System.Net.WebUtility.UrlEncode(libraryCode)}&book={chapter.BookNumber}&chapter={chapter.ChapterNumber}&playlist={System.Net.WebUtility.UrlEncode(playlistKey)}&segmentId={segment.Id}";
-        NavManager.NavigateTo($"/edit-segment?{query}{EditModeQueryParam()}");
+        NavManager.NavigateTo($"/select-verses?{query}{EditModeQueryParam()}");
     }
 
     // #45: enter edit mode for a playlist. If it is not the selected playlist

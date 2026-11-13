@@ -135,7 +135,7 @@
         var max = _selectedVerseNumbers.Max();
         var libraryCode = _library?.Code ?? "library_greg_hardin_live_com";
         var query = $"library={System.Net.WebUtility.UrlEncode(libraryCode)}&book={SelectedBookChapter.SelectedBook}&chapter={SelectedBookChapter.SelectedChapter}&playlist={System.Net.WebUtility.UrlEncode(playlist.Key)}&selectStart={min}&selectEnd={max}";
-        NavManager.NavigateTo($"/edit-segment?{query}");
+        NavManager.NavigateTo($"/select-verses?{query}");
     }
     
 

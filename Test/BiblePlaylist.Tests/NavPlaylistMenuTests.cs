@@ -548,7 +548,7 @@ namespace BiblePlaylist.Tests
                 addButton!.Click();
 
                 var uri = Services.GetRequiredService<NavigationManager>().Uri;
-                Assert.Contains("/edit-segment?", uri);
+                Assert.Contains("/select-verses?", uri);
                 Assert.Contains("book=43", uri);
                 Assert.Contains("chapter=1", uri);
                 Assert.Contains("playlist=test-key", uri);
@@ -579,7 +579,7 @@ namespace BiblePlaylist.Tests
                 addButton!.Click();
 
                 cut.WaitForAssertion(() =>
-                    Assert.Equal("http://localhost/edit-segment?library=library_greg_hardin_live_com&book=0&chapter=0&playlist=test-key&edit=1",
+                    Assert.Equal("http://localhost/select-verses?library=library_greg_hardin_live_com&book=0&chapter=0&playlist=test-key&edit=1",
                         Services.GetRequiredService<NavigationManager>().Uri),
                     TimeSpan.FromSeconds(5));
 
