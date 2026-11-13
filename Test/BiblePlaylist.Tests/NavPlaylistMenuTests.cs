@@ -243,15 +243,18 @@ namespace BiblePlaylist.Tests
         }
 
         /// <summary>
-        /// #45: start the playlist ⋮ menu's "Edit name & description" handler
-        /// for the given playlist (by library order). Same MudMenu popover
-        /// limitation as StartDeleteSegment: the menu items never render in
-        /// bUnit, so the handler the menu item is wired to is driven here
-        /// and the click path is covered by the real-browser check. Returns
-        /// the handler's task without awaiting it: the caller drives the
-        /// dialog, then awaits the task once the handler has run to completion.
+        /// #45 (review): start the playlist ⋮ menu's "Edit name & description"
+        /// handler for the given playlist (by library order). The title panel
+        /// expands inline — no dialog — so the form renders in the component's
+        /// markup and the tests drive its inputs and Save / Cancel buttons
+        /// directly. Same MudMenu popover limitation as StartDeleteSegment:
+        /// the menu items never render in bUnit, so the handler the menu item
+        /// is wired to is driven here and the click path is covered by the
+        /// real-browser check. The handler is synchronous (it only opens the
+        /// form); awaiting the InvokeAsync ensures the render has happened
+        /// before the test proceeds.
         /// </summary>
-        private static Task StartEditPlaylistAsync(
+        private static async Task StartEditPlaylist(
             IRenderedComponent<BiblePlaylist.Client.Shared.NavPlaylistMenu> cut, int playlistIndex)
         {
             var instance = cut.Instance;
@@ -260,14 +263,23 @@ namespace BiblePlaylist.Tests
                 .GetProperty("Library", BindingFlags.NonPublic | BindingFlags.Instance)!
                 .GetValue(instance)!;
             var playlist = library.Playlists![playlistIndex];
-            var method = type.GetMethod("StartEditPlaylistAsync", BindingFlags.NonPublic | BindingFlags.Instance)!;
-            return cut.InvokeAsync(() => (Task)method.Invoke(instance, new object[] { playlist })!);
+            var method = type.GetMethod("StartEditPlaylist", BindingFlags.NonPublic | BindingFlags.Instance)!;
+            await cut.InvokeAsync(() => method.Invoke(instance, new object[] { playlist }));
+        }
+
+        /// <summary>
+        /// #45 (review): click a button by its exact label inside a playlist
+        /// row (the inline title-edit form's Save / Cancel).
+        /// </summary>
+        private static void ClickRowButton(IRenderedComponent<BiblePlaylist.Client.Shared.NavPlaylistMenu> cut, string rowId, string text)
+        {
+            cut.FindAll($"#{rowId} button").First(b => b.TextContent.Trim() == text).Click();
         }
 
         /// <summary>
         /// #45: start the playlist ⋮ menu's "Delete playlist" handler for the
         /// given playlist (by library order). Same MudMenu popover limitation
-        /// as StartEditPlaylistAsync.
+        /// as StartEditPlaylist.
         /// </summary>
         private static Task StartDeletePlaylistAsync(
             IRenderedComponent<BiblePlaylist.Client.Shared.NavPlaylistMenu> cut, int playlistIndex)
@@ -969,24 +981,27 @@ namespace BiblePlaylist.Tests
         };
 
         /// <summary>
-        /// #45: the playlist ⋮ menu's "Edit name & description" saves the new
-        /// name and description in place — the Key never changes — PUTs the
-        /// library, and keeps the playlist selected.
+        /// #45 (review): saving the inline title form updates the name and
+        /// description in place — the Key never changes — PUTs the library,
+        /// keeps the playlist selected, and returns to read-only state (the
+        /// form is gone, the row shows the new name).
         /// </summary>
         [Fact]
         public async Task EditPlaylist_Save_UpdatesNameAndDescriptionKeepsSelected()
         {
             var cut = RenderMenu(new List<BookChapter> { JohnSingleSegmentChapter() }, 43, 1);
-            var provider = RenderComponent<MudDialogProvider>();
 
-            var editTask = StartEditPlaylistAsync(cut, playlistIndex: 0);
-            cut.WaitForAssertion(() => Assert.Contains("Edit playlist", provider.Markup), TimeSpan.FromSeconds(5));
+            await StartEditPlaylist(cut, playlistIndex: 0);
+            // The title panel expands inline: name field, description below
+            // it, Save / Cancel — no dialog.
+            cut.WaitForAssertion(() => Assert.Equal(2, cut.FindAll("#Test_Playlist input").Count), TimeSpan.FromSeconds(5));
 
-            provider.FindAll("input").First().Change("Renamed Playlist");
-            provider.FindAll("input").Skip(1).First().Change("A new description");
-            ClickDialogButton(provider, "Save");
-            await editTask;
+            cut.FindAll("#Test_Playlist input").First().Input("Renamed Playlist");
+            cut.FindAll("#Test_Playlist input").Skip(1).First().Input("A new description");
+            ClickRowButton(cut, "Test_Playlist", "Save");
 
+            // The save is async (library PUT); wait for it to be recorded.
+            cut.WaitForAssertion(() => Assert.Contains(HttpHandler.Requests, req => req.Method == HttpMethod.Put), TimeSpan.FromSeconds(5));
             var saved = await GetSavedLibrary();
             Assert.NotNull(saved);
             var playlist = Assert.Single(saved!.Playlists);
@@ -999,54 +1014,81 @@ namespace BiblePlaylist.Tests
             Assert.Equal("test-key", selected!.Key);
             Assert.Equal("Renamed Playlist", selected.Name);
             Assert.NotNull(cut.Find("#Renamed_Playlist"));
+            Assert.Empty(cut.FindAll("#Renamed_Playlist input"));
         }
 
         /// <summary>
-        /// #45: an empty name is rejected in the dialog with a clear message
-        /// and nothing is saved; the dialog stays open so the user can fix it.
+        /// #45 (review): an empty name is rejected inline with a clear message
+        /// and nothing is saved; the form stays open so the user can fix it.
         /// </summary>
         [Fact]
         public async Task EditPlaylist_EmptyName_Rejected()
         {
             var cut = RenderMenu(new List<BookChapter> { JohnSingleSegmentChapter() }, 43, 1);
-            var provider = RenderComponent<MudDialogProvider>();
 
-            var editTask = StartEditPlaylistAsync(cut, playlistIndex: 0);
-            cut.WaitForAssertion(() => Assert.Contains("Edit playlist", provider.Markup), TimeSpan.FromSeconds(5));
+            await StartEditPlaylist(cut, playlistIndex: 0);
+            cut.WaitForAssertion(() => Assert.Equal(2, cut.FindAll("#Test_Playlist input").Count), TimeSpan.FromSeconds(5));
 
-            provider.FindAll("input").First().Change("   ");
-            ClickDialogButton(provider, "Save");
+            cut.FindAll("#Test_Playlist input").First().Input("   ");
+            ClickRowButton(cut, "Test_Playlist", "Save");
 
-            cut.WaitForAssertion(() => Assert.Contains("Name is required.", provider.Markup), TimeSpan.FromSeconds(5));
+            cut.WaitForAssertion(() => Assert.Contains("Name is required.", cut.Find("#Test_Playlist").TextContent), TimeSpan.FromSeconds(5));
             Assert.Null(await GetSavedLibrary());
 
-            ClickDialogButton(provider, "Cancel");
-            await editTask;
+            // The form stays open; Cancel discards and returns to read-only.
+            ClickRowButton(cut, "Test_Playlist", "Cancel");
             Assert.Null(await GetSavedLibrary());
+            Assert.Empty(cut.FindAll("#Test_Playlist input"));
         }
 
         /// <summary>
-        /// #45: a duplicate name (case-insensitive) is rejected in the dialog
-        /// with a clear message and nothing is saved.
+        /// #45 (review): a duplicate name (case-insensitive) is rejected
+        /// inline with a clear message and nothing is saved.
         /// </summary>
         [Fact]
         public async Task EditPlaylist_DuplicateName_Rejected()
         {
             var cut = RenderMenuWithPlaylists(TwoPlaylists(), "test-key", 43, 1);
-            var provider = RenderComponent<MudDialogProvider>();
 
-            var editTask = StartEditPlaylistAsync(cut, playlistIndex: 0);
-            cut.WaitForAssertion(() => Assert.Contains("Edit playlist", provider.Markup), TimeSpan.FromSeconds(5));
+            await StartEditPlaylist(cut, playlistIndex: 0);
+            cut.WaitForAssertion(() => Assert.Equal(2, cut.FindAll("#Test_Playlist input").Count), TimeSpan.FromSeconds(5));
 
-            provider.FindAll("input").First().Change("second playlist");
-            ClickDialogButton(provider, "Save");
+            cut.FindAll("#Test_Playlist input").First().Input("second playlist");
+            ClickRowButton(cut, "Test_Playlist", "Save");
 
-            cut.WaitForAssertion(() => Assert.Contains("already exists", provider.Markup), TimeSpan.FromSeconds(5));
+            cut.WaitForAssertion(() => Assert.Contains("already exists", cut.Find("#Test_Playlist").TextContent), TimeSpan.FromSeconds(5));
             Assert.Null(await GetSavedLibrary());
 
-            ClickDialogButton(provider, "Cancel");
-            await editTask;
+            ClickRowButton(cut, "Test_Playlist", "Cancel");
             Assert.Null(await GetSavedLibrary());
+            Assert.Empty(cut.FindAll("#Test_Playlist input"));
+        }
+
+        /// <summary>
+        /// #45 (review): Cancel discards the title draft and returns to
+        /// read-only state with nothing saved, even after the fields were
+        /// changed.
+        /// </summary>
+        [Fact]
+        public async Task EditPlaylist_Cancel_DiscardsChanges()
+        {
+            var cut = RenderMenu(new List<BookChapter> { JohnSingleSegmentChapter() }, 43, 1);
+
+            await StartEditPlaylist(cut, playlistIndex: 0);
+            cut.WaitForAssertion(() => Assert.Equal(2, cut.FindAll("#Test_Playlist input").Count), TimeSpan.FromSeconds(5));
+
+            cut.FindAll("#Test_Playlist input").First().Input("Renamed Playlist");
+            cut.FindAll("#Test_Playlist input").Skip(1).First().Input("A new description");
+            ClickRowButton(cut, "Test_Playlist", "Cancel");
+
+            Assert.Null(await GetSavedLibrary());
+            // Read-only again, with the original name and description intact.
+            Assert.NotNull(cut.Find("#Test_Playlist"));
+            Assert.Empty(cut.FindAll("#Test_Playlist input"));
+            var selected = GetSelectedPlaylist(cut);
+            Assert.NotNull(selected);
+            Assert.Equal("Test Playlist", selected!.Name);
+            Assert.Equal("Test playlist", selected.Description);
         }
 
         /// <summary>

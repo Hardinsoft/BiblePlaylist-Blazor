@@ -58,23 +58,50 @@
                 foreach (var p in Library.Playlists)
                 {
                     <MudListItem Class="mb-5" @onclick="@(e => SelectPlaylist(p))" id="@p.Name.Replace(" ","_")">
-                        <div class="d-flex align-center justify-content-between" style="width: 100%;">
-                            <span>@p.Name</span>
-                            @* #45: playlist menu — edit name & description, edit segments
-                               (enters edit mode), delete playlist. The menu stops propagation
-                               so opening it does not also select the playlist. *@
-                            <MudMenu Icon="@Icons.Material.Filled.MoreVert"
-                                     AriaLabel="Playlist options"
-                                     @onclick:stopPropagation="true">
-                                <MudMenuItem Label="Edit name & description"
-                                             @onclick="() => StartEditPlaylistAsync(p)" />
-                                <MudMenuItem Label="@(_isEditMode && selectedPlaylist?.Key == p.Key ? "Done editing" : "Edit segments")"
-                                             @onclick="() => ToggleEditModeAsync(p)" />
-                                <MudMenuItem Label="Delete playlist"
-                                             Style="color: var(--mud-palette-error);"
-                                             @onclick="() => StartDeletePlaylistAsync(p)" />
-                            </MudMenu>
-                        </div>
+                        @if (_editingPlaylist?.Key == p.Key)
+                        {
+                            @* #45 (review): inline title edit — no modal (modals are
+                               poor on mobile). The title panel expands so the name
+                               becomes an editable field with the description below
+                               it. Save saves and returns to read-only; Cancel
+                               discards. The no-op @onclick with stopPropagation
+                               keeps clicks inside the form from selecting the
+                               playlist (the row's @onclick would toggle its
+                               chapters). *@
+                            <div class="d-flex flex-column gap-2 py-2" style="width: 100%;"
+                                 @onclick="() => { }" @onclick:stopPropagation="true">
+                                <MudTextField @bind-Value="_editName" Label="Name" Variant="Variant.Outlined" Immediate="true" />
+                                <MudTextField @bind-Value="_editDescription" Label="Description (optional)" Variant="Variant.Outlined" Immediate="true" />
+                                @if (!string.IsNullOrEmpty(_editError))
+                                {
+                                    <MudText Typo="Typo.body2" Color="Color.Error">@_editError</MudText>
+                                }
+                                <div class="d-flex gap-2">
+                                    <MudButton Color="Color.Secondary" OnClick="CancelEditPlaylist">Cancel</MudButton>
+                                    <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveEditPlaylistAsync">Save</MudButton>
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="d-flex align-center justify-content-between" style="width: 100%;">
+                                <span>@p.Name</span>
+                                @* #45: playlist menu — edit name & description, edit segments
+                                   (enters edit mode), delete playlist. The menu stops propagation
+                                   so opening it does not also select the playlist. *@
+                                <MudMenu Icon="@Icons.Material.Filled.MoreVert"
+                                         AriaLabel="Playlist options"
+                                         @onclick:stopPropagation="true">
+                                    <MudMenuItem Label="Edit name & description"
+                                                 @onclick="() => StartEditPlaylist(p)" />
+                                    <MudMenuItem Label="@(_isEditMode && selectedPlaylist?.Key == p.Key ? "Done editing" : "Edit segments")"
+                                                 @onclick="() => ToggleEditModeAsync(p)" />
+                                    <MudMenuItem Label="Delete playlist"
+                                                 Style="color: var(--mud-palette-error);"
+                                                 @onclick="() => StartDeletePlaylistAsync(p)" />
+                                </MudMenu>
+                            </div>
+                        }
                     </MudListItem>
                     @if (Library != null && !hideChapters && selectedPlaylist?.Name == p.Name)
                     {
@@ -339,6 +366,14 @@
     // #45: edit mode for the selected playlist. Off by default (listen/read
     // mode) — the edit controls are hidden until "Edit segments" is chosen.
     private bool _isEditMode;
+    // #45 (review): inline title edit — the playlist whose row is expanded
+    // to editable Name / Description fields. Null when no title is being
+    // edited (read-only state). _editName/_editDescription hold the draft;
+    // _editError is the inline validation message, if any.
+    private Playlist? _editingPlaylist;
+    private string? _editName;
+    private string? _editDescription;
+    private string? _editError;
     // #30: index in _playlistSegments of the segment returned to from the
     // segment editor, waiting for the user's first Play / forward /
     // double-click. It is NOT the current segment: the return state stays
@@ -1069,31 +1104,57 @@
             await EnterEditModeAsync(playlist);
     }
 
-    // #45: edit a playlist's name and description in a dialog. The Key never
-    // changes on rename; the change is saved in place and the playlist stays
-    // selected. Validation (non-empty, unique) lives in the dialog.
-    private async Task StartEditPlaylistAsync(Playlist playlist)
+    // #45 (review): edit a playlist's name and description inline — the
+    // title panel expands to editable fields, no modal. Save validates
+    // (non-empty, unique among the library's other playlists,
+    // case-insensitive; renaming to its own current name is fine) and saves
+    // in place, then returns to read-only state. The Key never changes on
+    // rename, and the playlist stays selected. A rejected name shows an
+    // inline error and nothing is saved; the form stays open so the user
+    // can fix it.
+    private void StartEditPlaylist(Playlist playlist)
     {
-        if (playlist == null || Library?.Playlists == null) return;
+        if (playlist == null) return;
+        _editingPlaylist = playlist;
+        _editName = playlist.Name;
+        _editDescription = playlist.Description;
+        _editError = null;
+        StateHasChanged();
+    }
 
-        var parameters = new DialogParameters
+    private async Task SaveEditPlaylistAsync()
+    {
+        if (_editingPlaylist == null || Library?.Playlists == null) return;
+
+        var name = (_editName ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(name))
         {
-            ["PlaylistName"] = playlist.Name,
-            ["PlaylistDescription"] = playlist.Description,
-            ["ExistingNames"] = Library.Playlists
-                .Where(p => p.Key != playlist.Key)
-                .Select(p => p.Name)
-                .ToList()
-        };
-        var dialog = await DialogService.ShowAsync<EditPlaylistDialog>("Edit playlist", parameters);
-        var result = await dialog.Result;
-        if (result is not { Canceled: false, Data: ValueTuple<string, string?> data }) return;
-        var (name, description) = data;
+            _editError = "Name is required.";
+            return;
+        }
 
-        playlist.Name = name;
-        playlist.Description = description;
+        if (Library.Playlists.Any(p => p.Key != _editingPlaylist.Key
+            && string.Equals(p.Name?.Trim(), name, StringComparison.OrdinalIgnoreCase)))
+        {
+            _editError = $"A playlist named '{name}' already exists. Choose a different name.";
+            return;
+        }
+
+        var description = (_editDescription ?? string.Empty).Trim();
+        _editingPlaylist.Name = name;
+        _editingPlaylist.Description = string.IsNullOrWhiteSpace(description) ? null : description;
+        _editingPlaylist = null;
+        _editError = null;
         await SaveLibraryAsync();
         await InvokeAsync(StateHasChanged);
+    }
+
+    // #45 (review): discard the title draft and return to read-only state.
+    private void CancelEditPlaylist()
+    {
+        _editingPlaylist = null;
+        _editError = null;
+        StateHasChanged();
     }
 
     // #45: delete a playlist after a confirm dialog. On confirm the playlist
