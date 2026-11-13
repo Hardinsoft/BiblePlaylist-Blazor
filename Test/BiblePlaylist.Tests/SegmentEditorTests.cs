@@ -267,7 +267,7 @@ namespace BiblePlaylist.Tests
             cut.WaitForAssertion(() =>
             {
                 Assert.Equal(new HashSet<int> { 1, 2, 3, 4, 5 }, GetSelectedVerses(cut));
-                Assert.Contains("Segment: 1-5 (5 verses)", cut.Markup);
+                Assert.Contains("Verses: 1-5", cut.Markup);
             });
         }
 
@@ -488,7 +488,7 @@ namespace BiblePlaylist.Tests
             await cut.InvokeAsync(() => Task.Delay(50));
 
             Assert.NotNull(cut);
-            Assert.Contains("2-4 (3 verses)", cut.Markup);
+            Assert.Contains("2-4", cut.Markup);
             Assert.Contains("Verse 2 text.", cut.Markup);
             Assert.Contains("Verse 3 text.", cut.Markup);
             Assert.Contains("Verse 4 text.", cut.Markup);
@@ -700,7 +700,7 @@ namespace BiblePlaylist.Tests
             var cut = RenderEditor(1, 5, "test-playlist", 1);
             await cut.InvokeAsync(() => Task.Delay(50));
 
-            Assert.Contains("2-4 (3 verses)", cut.Markup);
+            Assert.Contains("2-4", cut.Markup);
 
             SetSelectedVerses(cut, new[] { 1, 2, 3 });
             await ClickSave(cut);
@@ -739,7 +739,7 @@ namespace BiblePlaylist.Tests
             var cut = RenderEditor(1, 5, "test-playlist", selectStart: 1, selectEnd: 3);
             await cut.InvokeAsync(() => Task.Delay(50));
 
-            Assert.Contains("1-3 (3 verses)", cut.Markup);
+            Assert.Contains("1-3", cut.Markup);
         }
 
         /// <summary>

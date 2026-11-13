@@ -328,16 +328,16 @@ namespace BiblePlaylist.Tests
 
         /// <summary>
         /// #45: whether any edit control is present in the markup — a
-        /// per-segment ⋮ menu, a per-chapter Add segment button, the
-        /// Add-new-chapter button, or a chapter header ⋮ menu. In listen/read
+        /// per-segment ⋮ menu, a per-chapter Add Verses button, the
+        /// Add Chapter button, or a chapter header ⋮ menu. In listen/read
         /// mode none of them render.
         /// </summary>
         private static bool HasEditControls(IRenderedComponent<BiblePlaylist.Client.Shared.NavPlaylistMenu> cut)
         {
             return cut.FindAll("[aria-label='Segment options']").Count > 0
                 || cut.FindAll("[aria-label='Chapter options']").Count > 0
-                || cut.FindAll("button").Any(b => b.TextContent.Trim() == "Add segment")
-                || cut.FindAll("button").Any(b => b.TextContent.Contains("Add segment to a new chapter"));
+                || cut.FindAll("button").Any(b => b.TextContent.Trim() == "Add Verses")
+                || cut.FindAll("button").Any(b => b.TextContent.Contains("Add Chapter"));
         }
 
         private static void ClickDialogButton(IRenderedComponent<MudDialogProvider> provider, string text)
@@ -531,7 +531,7 @@ namespace BiblePlaylist.Tests
         }
 
         /// <summary>
-        /// #37: the per-chapter "Add segment" button opens the editor in
+        /// #37: the per-chapter "Add Verses" button opens the editor in
         /// Create mode for that chapter — no segmentId in the URL.
         /// #45: the button is an edit control, so edit mode is entered first.
         /// </summary>
@@ -543,7 +543,7 @@ namespace BiblePlaylist.Tests
             {
                 await ToggleEditMode(cut);
                 var addButton = cut.FindAll("button")
-                    .FirstOrDefault(b => b.TextContent.Contains("Add segment"));
+                    .FirstOrDefault(b => b.TextContent.Contains("Add Verses"));
                 Assert.NotNull(addButton);
                 addButton!.Click();
 
@@ -574,7 +574,7 @@ namespace BiblePlaylist.Tests
             {
                 await ToggleEditMode(cut);
                 var addButton = cut.FindAll("button")
-                    .FirstOrDefault(b => b.TextContent.Contains("Add segment to a new chapter"));
+                    .FirstOrDefault(b => b.TextContent.Contains("Add Chapter"));
                 Assert.NotNull(addButton);
                 addButton!.Click();
 
@@ -639,7 +639,7 @@ namespace BiblePlaylist.Tests
         /// <summary>
         /// #42: deleting the last segment of a chapter prompts to delete the
         /// chapter too; keeping it leaves the empty chapter, which shows the
-        /// empty state with Add segment and Delete chapter actions.
+        /// empty state with Add Verses and Delete chapter actions.
         /// </summary>
         [Fact]
         public async Task DeleteLastSegment_PromptKeep_LeavesEmptyChapter()
@@ -676,7 +676,7 @@ namespace BiblePlaylist.Tests
                 // mode to see them.
                 await ToggleEditMode(cut);
                 Assert.Contains(cut.FindAll("button"), b => b.TextContent.Contains("Delete chapter"));
-                Assert.Contains(cut.FindAll("button"), b => b.TextContent.Trim() == "Add segment");
+                Assert.Contains(cut.FindAll("button"), b => b.TextContent.Trim() == "Add Verses");
 
                 await deleteTask;
             }
@@ -1092,6 +1092,37 @@ namespace BiblePlaylist.Tests
         }
 
         /// <summary>
+        /// #45 (review): while a playlist's title is being edited, tapping
+        /// its row does not toggle it — the playlist stays selected and its
+        /// chapters stay expanded. Once the edit is cancelled, tapping the
+        /// row toggles again (collapses back to the playlist list).
+        /// </summary>
+        [Fact]
+        public async Task EditPlaylist_RowClickWhileEditing_DoesNotToggle()
+        {
+            var cut = RenderMenu(new List<BookChapter> { JohnSingleSegmentChapter() }, 43, 1);
+            try
+            {
+                // The return URL leaves the playlist selected with chapters shown.
+                Assert.Single(cut.FindAll("#verse-1-1-1"));
+
+                await StartEditPlaylist(cut, playlistIndex: 0);
+                cut.WaitForAssertion(() => Assert.Equal(2, cut.FindAll("#Test_Playlist input").Count), TimeSpan.FromSeconds(5));
+
+                // Tap the row while editing: no toggle — the chapters stay shown.
+                cut.Find("#Test_Playlist").Click();
+                Assert.Single(cut.FindAll("#verse-1-1-1"));
+                Assert.Equal("test-key", GetSelectedPlaylist(cut)!.Key);
+
+                // Cancel the edit, then the same tap toggles (collapses) again.
+                ClickRowButton(cut, "Test_Playlist", "Cancel");
+                cut.Find("#Test_Playlist").Click();
+                cut.WaitForAssertion(() => Assert.Empty(cut.FindAll("#verse-1-1-1")), TimeSpan.FromSeconds(5));
+            }
+            finally { StopTimer(cut); }
+        }
+
+        /// <summary>
         /// #45: deleting a playlist (confirm) removes it, saves, and selects
         /// the first remaining playlist.
         /// </summary>
@@ -1164,7 +1195,7 @@ namespace BiblePlaylist.Tests
 
         /// <summary>
         /// #45: in listen/read mode (the default) the edit controls are hidden:
-        /// no segment ⋮ menus, no Add segment buttons, no Add-new-chapter button,
+        /// no segment ⋮ menus, no Add Verses buttons, no Add Chapter button,
         /// and no chapter ⋮ menus.
         /// </summary>
         [Fact]
@@ -1178,7 +1209,7 @@ namespace BiblePlaylist.Tests
         }
 
         /// <summary>
-        /// #45: "Edit segments" reveals the edit controls for the playlist.
+        /// #45: "Edit playlist" reveals the edit controls for the playlist.
         /// </summary>
         [Fact]
         public async Task EditMode_EnterEditSegments_RevealsEditControls()

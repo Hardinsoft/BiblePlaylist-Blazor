@@ -59,7 +59,7 @@
                 {
                     <MudIcon Icon="@Icons.Material.Filled.PlayArrow" />
                 }
-                @(_isPlaying ? "Stop" : "Play segment")
+                @(_isPlaying ? "Stop" : "Play Verses")
             </MudButton>
             <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveSegment">Save</MudButton>
             <MudButton Variant="Variant.Text" Color="Color.Secondary" OnClick="CancelEdit">Cancel</MudButton>
@@ -92,7 +92,7 @@
         else
         {
             <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="mb-3">
-                Segment: @(ShowSegmentRange()) · Segment time: @(FormatTime(SegmentDurationSeconds)) · Chapter length: @(FormatTime(ChapterTotalSeconds))
+                Verses: @(ShowSegmentRange()) · Time: @(FormatTime(SegmentDurationSeconds)) · Chapter length: @(FormatTime(ChapterTotalSeconds))
             </MudAlert>
         }
 
@@ -386,7 +386,7 @@
 
         var min = _selectedVerseNumbers.Min();
         var max = _selectedVerseNumbers.Max();
-        return $"{min}-{max} ({_selectedVerseNumbers.Count} verses)";
+        return $"{min}-{max}";
     }
 
     private async Task ToggleVerseAsync(int verseNumber)
