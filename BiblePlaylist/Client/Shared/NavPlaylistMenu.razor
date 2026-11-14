@@ -57,19 +57,19 @@
             {            
                 foreach (var p in Library.Playlists)
                 {
-                    <MudListItem Class="mb-5" @onclick="@(e => OnPlaylistRowClickAsync(p))" id="@p.Name.Replace(" ","_")">
-                        @if (_editingPlaylist?.Key == p.Key)
-                        {
-                            @* #45 (review): inline title edit — no modal (modals are
-                               poor on mobile). The title panel expands so the name
-                               becomes an editable field with the description below
-                               it. Save saves and returns to read-only; Cancel
-                               discards. The no-op @onclick with stopPropagation
-                               keeps clicks inside the form from selecting the
-                               playlist (the row's @onclick would toggle its
-                               chapters). *@
-                            <div class="d-flex flex-column gap-2 py-2" style="width: 100%;"
-                                 @onclick="() => { }" @onclick:stopPropagation="true">
+                    @if (_editingPlaylist?.Key == p.Key)
+                    {
+                        @* #45 (review): inline title edit — no modal (modals are
+                           poor on mobile). The title panel expands so the name
+                           becomes an editable field with the description below
+                           it. Save saves and returns to read-only; Cancel
+                           discards. Rendered as a plain div (not a MudListItem):
+                           MudListItem's key interceptor swallows the Space key
+                           (to stop the page scrolling), which would make spaces
+                           untypeable in these fields. The mud-list-item class
+                           keeps the row's look. *@
+                        <div class="mud-list-item mb-5" id="@p.Name.Replace(" ","_")" @onclick="() => { }">
+                            <div class="d-flex flex-column gap-2 py-2" style="width: 100%;">
                                 <MudTextField @bind-Value="_editName" Label="Name" Variant="Variant.Outlined" Immediate="true" />
                                 <MudTextField @bind-Value="_editDescription" Label="Description (optional)" Variant="Variant.Outlined" Immediate="true" />
                                 @if (!string.IsNullOrEmpty(_editError))
@@ -81,9 +81,11 @@
                                     <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveEditPlaylistAsync">Save</MudButton>
                                 </div>
                             </div>
-                        }
-                        else
-                        {
+                        </div>
+                    }
+                    else
+                    {
+                        <MudListItem Class="mb-5" @onclick="@(e => OnPlaylistRowClickAsync(p))" id="@p.Name.Replace(" ","_")">
                             <div class="d-flex align-center justify-content-between" style="width: 100%;">
                                 <span>@p.Name</span>
                                 @* #45: playlist menu — edit name & description, edit segments
@@ -101,8 +103,8 @@
                                                  @onclick="() => StartDeletePlaylistAsync(p)" />
                                 </MudMenu>
                             </div>
-                        }
-                    </MudListItem>
+                        </MudListItem>
+                    }
                     @if (Library != null && !hideChapters && selectedPlaylist?.Name == p.Name)
                     {
                         <MudItem xs="12" hidden="@hideChapters">

@@ -1018,6 +1018,36 @@ namespace BiblePlaylist.Tests
         }
 
         /// <summary>
+        /// #45 (review, Greg 2026-11-13): spaces are allowed while typing the
+        /// name and description — they are trimmed only on save, not on input.
+        /// (In the browser, MudListItem's key interceptor used to swallow the
+        /// Space key inside the row, so the form is no longer rendered inside
+        /// a MudListItem; this test pins the trim-on-save half of the rule.)
+        /// </summary>
+        [Fact]
+        public async Task EditPlaylist_Save_TrimsSpacesButKeepsInternalOnes()
+        {
+            var cut = RenderMenu(new List<BookChapter> { JohnSingleSegmentChapter() }, 43, 1);
+
+            await StartEditPlaylist(cut, playlistIndex: 0);
+            cut.WaitForAssertion(() => Assert.Equal(2, cut.FindAll("#Test_Playlist input").Count), TimeSpan.FromSeconds(5));
+
+            cut.FindAll("#Test_Playlist input").First().Input("  My Test Playlist  ");
+            cut.FindAll("#Test_Playlist input").Skip(1).First().Input("  A new description  ");
+            ClickRowButton(cut, "Test_Playlist", "Save");
+
+            cut.WaitForAssertion(() => Assert.Contains(HttpHandler.Requests, req => req.Method == HttpMethod.Put), TimeSpan.FromSeconds(5));
+            var saved = await GetSavedLibrary();
+            Assert.NotNull(saved);
+            var playlist = Assert.Single(saved!.Playlists);
+            Assert.Equal("My Test Playlist", playlist.Name);
+            Assert.Equal("A new description", playlist.Description);
+
+            Assert.NotNull(cut.Find("#My_Test_Playlist"));
+            Assert.Empty(cut.FindAll("#My_Test_Playlist input"));
+        }
+
+        /// <summary>
         /// #45 (review): an empty name is rejected inline with a clear message
         /// and nothing is saved; the form stays open so the user can fix it.
         /// </summary>
