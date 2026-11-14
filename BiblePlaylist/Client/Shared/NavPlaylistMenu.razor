@@ -57,13 +57,69 @@
             {            
                 foreach (var p in Library.Playlists)
                 {
-                    <MudListItem Class="mb-5" @onclick="@(e => SelectPlaylist(p))" id="@p.Name.Replace(" ","_")">@p.Name</MudListItem>
+                    @if (_editingPlaylist?.Key == p.Key)
+                    {
+                        @* #45 (review): inline title edit — no modal (modals are
+                           poor on mobile). The title panel expands so the name
+                           becomes an editable field with the description below
+                           it. Save saves and returns to read-only; Cancel
+                           discards. Rendered as a plain div (not a MudListItem):
+                           MudListItem's key interceptor swallows the Space key
+                           (to stop the page scrolling), which would make spaces
+                           untypeable in these fields. The mud-list-item class
+                           keeps the row's look. *@
+                        <div class="mud-list-item mb-5" id="@p.Name.Replace(" ","_")" @onclick="() => { }">
+                            <div class="d-flex flex-column gap-2 py-2" style="width: 100%;">
+                                <MudTextField @bind-Value="_editName" Label="Name" Variant="Variant.Outlined" Immediate="true" />
+                                <MudTextField @bind-Value="_editDescription" Label="Description (optional)" Variant="Variant.Outlined" Immediate="true" />
+                                @if (!string.IsNullOrEmpty(_editError))
+                                {
+                                    <MudText Typo="Typo.body2" Color="Color.Error">@_editError</MudText>
+                                }
+                                <div class="d-flex gap-2">
+                                    <MudButton Color="Color.Secondary" OnClick="CancelEditPlaylist">Cancel</MudButton>
+                                    <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveEditPlaylistAsync">Save</MudButton>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <MudListItem Class="mb-5" @onclick="@(e => OnPlaylistRowClickAsync(p))" id="@p.Name.Replace(" ","_")">
+                            <div class="d-flex align-center justify-content-between" style="width: 100%;">
+                                <span>@p.Name</span>
+                                @* #45: playlist menu — edit name & description, edit segments
+                                   (enters edit mode), delete playlist. The menu stops propagation
+                                   so opening it does not also select the playlist. *@
+                                <MudMenu Icon="@Icons.Material.Filled.MoreVert"
+                                         AriaLabel="Playlist options"
+                                         @onclick:stopPropagation="true">
+                                    <MudMenuItem Label="Edit name & description"
+                                                 @onclick="() => StartEditPlaylist(p)" />
+                                    <MudMenuItem Label="@(_isEditMode && selectedPlaylist?.Key == p.Key ? "Done editing" : "Edit playlist")"
+                                                 @onclick="() => ToggleEditModeAsync(p)" />
+                                    <MudMenuItem Label="Delete playlist"
+                                                 Style="color: var(--mud-palette-error);"
+                                                 @onclick="() => StartDeletePlaylistAsync(p)" />
+                                </MudMenu>
+                            </div>
+                        </MudListItem>
+                    }
                     @if (Library != null && !hideChapters && selectedPlaylist?.Name == p.Name)
                     {
                         <MudItem xs="12" hidden="@hideChapters">
                             <MudGrid>
                                 @if (selectedPlaylist != null)
                                 {                                   
+                                    @if (_isEditMode)
+                                    {
+                                        @* #45: the primary way out of edit mode — one tap, back to
+                                           listen/read mode. The playlist ⋮ menu item toggles to the
+                                           same "Done editing" label. *@
+                                        <MudItem xs="12">
+                                            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ExitEditMode" Class="mb-2">Done editing</MudButton>
+                                        </MudItem>
+                                    }
                                     @if (selectedPlaylist.BookChapters == null || !selectedPlaylist.BookChapters.Any())
                                     {
                                         <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="my-4">
@@ -94,16 +150,20 @@
                                                                      Class="mud-text-secondary chapter-drag-handle"
                                                                      Style="cursor: grab; flex-shrink: 0;" />
                                                             <MudText Typo="Typo.subtitle1" Class="flex-grow-1">@context.Display</MudText>
-                                                            @* #42: chapter menu — Delete lives here so a chapter
-                                                               with segments can be removed without deleting them
-                                                               one by one. *@
-                                                            <MudMenu Icon="@Icons.Material.Filled.MoreVert"
-                                                                     AriaLabel="Chapter options"
-                                                                     @onclick:stopPropagation="true">
-                                                                <MudMenuItem Label="Delete chapter"
-                                                                             Style="color: var(--mud-palette-error);"
-                                                                             @onclick="() => DeleteChapterAsync(context)" />
-                                                            </MudMenu>
+                                                            @if (_isEditMode)
+                                                            {
+                                                                @* #42: chapter menu — Delete lives here so a chapter
+                                                                   with segments can be removed without deleting them
+                                                                   one by one. #45: an edit control — hidden in
+                                                                   listen/read mode. *@
+                                                                <MudMenu Icon="@Icons.Material.Filled.MoreVert"
+                                                                         AriaLabel="Chapter options"
+                                                                         @onclick:stopPropagation="true">
+                                                                    <MudMenuItem Label="Delete chapter"
+                                                                                 Style="color: var(--mud-palette-error);"
+                                                                                 @onclick="() => DeleteChapterAsync(context)" />
+                                                                </MudMenu>
+                                                            }
                                                         </div>
                                                     </TitleContent>
                                                     <ChildContent>
@@ -112,12 +172,16 @@
                                                             <MudAlert Severity="Severity.Warning" Variant="Variant.Text" Dense="true">
                                                                 No segments defined for this chapter.
                                                             </MudAlert>
-                                                            @* #42: an empty chapter can be removed here (or refilled
-                                                               via Add segment below). No delete button on the
-                                                               chapter panel itself. *@
-                                                            <MudButton Variant="Variant.Text" Color="Color.Error"
-                                                                       StartIcon="@Icons.Material.Filled.Delete"
-                                                                       OnClick="() => DeleteChapterAsync(context)" Class="mt-1">Delete chapter</MudButton>
+                                                            @if (_isEditMode)
+                                                            {
+                                                                @* #42: an empty chapter can be removed here (or refilled
+                                                                   via Add Verses below). No delete button on the
+                                                                   chapter panel itself. #45: an edit control — hidden
+                                                                   in listen/read mode. *@
+                                                                <MudButton Variant="Variant.Text" Color="Color.Error"
+                                                                           StartIcon="@Icons.Material.Filled.Delete"
+                                                                           OnClick="() => DeleteChapterAsync(context)" Class="mt-1">Delete chapter</MudButton>
+                                                            }
                                                         }
                                                         else
                                                         {
@@ -133,7 +197,7 @@
                                                                           @ondblclick="@(() => JumpToSegmentOnDoubleClick(context, segment))">
                                                                     @* #39: the intro text is the segment card's
                                                                        heading; the verse rows below are unchanged.
-                                                                       Centered, larger and bold so it reads as a
+                                                                       Centered and bold so it reads as a
                                                                        description introducing the Scripture, not
                                                                        as Scripture itself. *@
                                                                     @if (!string.IsNullOrWhiteSpace(segment.IntroText))
@@ -166,32 +230,48 @@
                                                                                 </div>
                                                                             }
                                                                         </div>
-                                                                        <MudMenu Icon="@Icons.Material.Filled.MoreVert"
-                                                                                 AriaLabel="Segment options"
-                                                                                 @onclick:stopPropagation="true">
-                                                                            <MudMenuItem Label="Edit segment"
-                                                                                         @onclick="() => NavigateToEdit(context, segment)" />
-                                                                            <MudMenuItem Label="Delete segment"
-                                                                                         Style="color: var(--mud-palette-error);"
-                                                                                         @onclick="() => DeleteSegment(context, segment)" />
-                                                                        </MudMenu>
+                                                                        @if (_isEditMode)
+                                                                        {
+                                                                            <MudMenu Icon="@Icons.Material.Filled.MoreVert"
+                                                                                     AriaLabel="Segment options"
+                                                                                     @onclick:stopPropagation="true">
+                                                                                <MudMenuItem Label="Select Verses"
+                                                                                             @onclick="() => NavigateToEdit(context, segment)" />
+                                                                                <MudMenuItem Label="Remove Verses"
+                                                                                             Style="color: var(--mud-palette-error);"
+                                                                                             @onclick="() => DeleteSegment(context, segment)" />
+                                                                            </MudMenu>
+                                                                        }
                                                                     </div>
                                                                 </MudPaper>
                                                             }
                                                         }
-                                                        @* #37: create a segment in this chapter. *@
-                                                        <MudButton Variant="Variant.Text" Color="Color.Primary"
-                                                                   StartIcon="@Icons.Material.Filled.Add"
-                                                                   OnClick="() => NavigateToCreate(context)" Class="mt-1">Add segment</MudButton>
+                                                        @if (_isEditMode)
+                                                        {
+                                                            @* #37: create a segment in this chapter. #45: an edit
+                                                               control — hidden in listen/read mode. *@
+                                                            <MudButton Variant="Variant.Text" Color="Color.Primary"
+                                                                       StartIcon="@Icons.Material.Filled.Add"
+                                                                       OnClick="() => NavigateToCreate(context)" Class="mt-1">Add Verses</MudButton>
+                                                        }
                                                     </ChildContent>
                                                 </MudExpansionPanel>
                                             </ItemRenderer>
                                         </MudDropContainer>
                                     }
-                                    @* #37: start a segment in a chapter not in this playlist yet. *@
-                                    <MudButton Variant="Variant.Filled" Color="Color.Primary"
-                                               StartIcon="@Icons.Material.Filled.Add"
-                                               OnClick="NavigateToAddNewChapterSegment" Class="mt-3">Add segment to a new chapter</MudButton>
+                                    @if (_isEditMode)
+                                    {
+                                        @* #37: start a segment in a chapter not in this playlist yet.
+                                           #45: an edit control — hidden in listen/read mode.
+                                           The MudItem indents the button like "Done editing" above,
+                                           so it lines up with the panel heading instead of sitting
+                                           on the container's left edge. *@
+                                        <MudItem xs="12">
+                                            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                                                       StartIcon="@Icons.Material.Filled.Add"
+                                                       OnClick="NavigateToAddNewChapterSegment" Class="mt-3">Add Chapter</MudButton>
+                                        </MudItem>
+                                    }
                                 }
                             </MudGrid>
                         </MudItem>
@@ -223,7 +303,8 @@
     private bool loadingTrack { get; set; } = false;
 
     private Library? Library { get; set; }
-    private Playlist selectedPlaylist { get; set; } = null!;
+    // #45: nullable — deleting the last playlist leaves no playlist selected.
+    private Playlist? selectedPlaylist { get; set; }
 
     [Parameter]
     public string PlaylistName { get; set; } = null!;
@@ -289,6 +370,17 @@
     private BookChapter? _expandedChapter;
     private Segment? _returnTargetSegment;
     private bool _returnHandled;
+    // #45: edit mode for the selected playlist. Off by default (listen/read
+    // mode) — the edit controls are hidden until "Edit playlist" is chosen.
+    private bool _isEditMode;
+    // #45 (review): inline title edit — the playlist whose row is expanded
+    // to editable Name / Description fields. Null when no title is being
+    // edited (read-only state). _editName/_editDescription hold the draft;
+    // _editError is the inline validation message, if any.
+    private Playlist? _editingPlaylist;
+    private string? _editName;
+    private string? _editDescription;
+    private string? _editError;
     // #30: index in _playlistSegments of the segment returned to from the
     // segment editor, waiting for the user's first Play / forward /
     // double-click. It is NOT the current segment: the return state stays
@@ -489,6 +581,11 @@
             : -1;
         if (_pendingSegmentIndex < 0 && _expandedChapter != null)
             _pendingSegmentIndex = _playlistSegments.FindIndex(s => s.Chapter == _expandedChapter);
+
+        // #45: restore edit mode when the editor was entered from edit mode
+        // (the editor URL carries edit=1 through the return URL).
+        _isEditMode = GetQueryValue("edit") == "1";
+
         await InvokeAsync(StateHasChanged);
     }
 
@@ -541,11 +638,27 @@
         ///TODO: Possible future event to open edit menu
     }
 
+    // #45 (review): while a playlist's title is being edited, tapping its
+    // row must not toggle it (load/collapse the playlist) — the user is
+    // mid-edit and an accidental tap would collapse the playlist or
+    // navigate away from it. Other rows still toggle normally.
+    private async Task OnPlaylistRowClickAsync(Playlist playlist)
+    {
+        if (_editingPlaylist?.Key == playlist.Key) return;
+        await SelectPlaylist(playlist);
+    }
+
     protected async Task SelectPlaylist(Playlist playlist)
     {
         // Always cancel any in-flight TTS/playback first so a previous PlayCurrentSegment
         // cannot resume after its speakSequenceAsync await completes.
         await CancelPlaybackAsync();
+
+        // #45: switching to a different playlist leaves edit mode (the new
+        // playlist shows in listen/read mode). Tapping the already-selected
+        // playlist keeps edit mode.
+        if (selectedPlaylist?.Key != playlist.Key)
+            _isEditMode = false;
 
         _expandedChapter = null;
         _returnTargetSegment = null;
@@ -937,12 +1050,16 @@
                ?? string.Empty;
     }
 
+    // #45: the editor URL carries edit=1 when entered from edit mode, so the
+    // return URL brings edit mode back (see HandleReturnNavigationAsync).
+    private string EditModeQueryParam() => _isEditMode ? "&edit=1" : string.Empty;
+
     private void NavigateToCreate(BookChapter chapter)
     {
         var playlistKey = GetPlaylistKey();
         var libraryCode = Library?.Code ?? string.Empty;
         var query = $"library={System.Net.WebUtility.UrlEncode(libraryCode)}&book={chapter.BookNumber}&chapter={chapter.ChapterNumber}&playlist={System.Net.WebUtility.UrlEncode(playlistKey)}";
-        NavManager.NavigateTo($"/edit-segment?{query}");
+        NavManager.NavigateTo($"/select-verses?{query}{EditModeQueryParam()}");
     }
 
     // Adding a segment to a new chapter starts in the editor, not on the
@@ -954,7 +1071,7 @@
         var playlistKey = GetPlaylistKey();
         var libraryCode = Library?.Code ?? string.Empty;
         var query = $"library={System.Net.WebUtility.UrlEncode(libraryCode)}&book=0&chapter=0&playlist={System.Net.WebUtility.UrlEncode(playlistKey)}";
-        NavManager.NavigateTo($"/edit-segment?{query}");
+        NavManager.NavigateTo($"/select-verses?{query}{EditModeQueryParam()}");
     }
 
     private void NavigateToEdit(BookChapter chapter, Segment segment)
@@ -962,7 +1079,157 @@
         var playlistKey = GetPlaylistKey();
         var libraryCode = Library?.Code ?? string.Empty;
         var query = $"library={System.Net.WebUtility.UrlEncode(libraryCode)}&book={chapter.BookNumber}&chapter={chapter.ChapterNumber}&playlist={System.Net.WebUtility.UrlEncode(playlistKey)}&segmentId={segment.Id}";
-        NavManager.NavigateTo($"/edit-segment?{query}");
+        NavManager.NavigateTo($"/select-verses?{query}{EditModeQueryParam()}");
+    }
+
+    // #45: enter edit mode for a playlist. If it is not the selected playlist
+    // (or its chapters are collapsed), select it first — and force it open,
+    // because SelectPlaylist toggles the chapters. If it is already open,
+    // just flip the mode on.
+    private async Task EnterEditModeAsync(Playlist playlist)
+    {
+        if (selectedPlaylist?.Key != playlist.Key || hideChapters)
+        {
+            await SelectPlaylist(playlist);
+            hideChapters = false;
+        }
+        _isEditMode = true;
+        // The drop container caches its rendered chapter panels, so a plain
+        // StateHasChanged does not re-render them — refresh it so the edit
+        // controls appear inside the panels too.
+        await RefreshDropContainerAsync();
+    }
+
+    // #45: leave edit mode — back to listen/read mode.
+    private void ExitEditMode()
+    {
+        _isEditMode = false;
+        // The drop container caches its rendered chapter panels; refresh it
+        // so the edit controls disappear from the panels too.
+        _dropContainer?.Refresh();
+        StateHasChanged();
+    }
+
+    // #45: the playlist ⋮ menu item toggles edit mode. In edit mode the same
+    // item reads "Done editing" and exits; otherwise it enters edit mode
+    // for that playlist.
+    private async Task ToggleEditModeAsync(Playlist playlist)
+    {
+        if (_isEditMode && selectedPlaylist?.Key == playlist.Key)
+            ExitEditMode();
+        else
+            await EnterEditModeAsync(playlist);
+    }
+
+    // #45 (review): edit a playlist's name and description inline — the
+    // title panel expands to editable fields, no modal. Save validates
+    // (non-empty, unique among the library's other playlists,
+    // case-insensitive; renaming to its own current name is fine) and saves
+    // in place, then returns to read-only state. The Key never changes on
+    // rename, and the playlist stays selected. A rejected name shows an
+    // inline error and nothing is saved; the form stays open so the user
+    // can fix it.
+    private void StartEditPlaylist(Playlist playlist)
+    {
+        if (playlist == null) return;
+        _editingPlaylist = playlist;
+        _editName = playlist.Name;
+        _editDescription = playlist.Description;
+        _editError = null;
+        StateHasChanged();
+    }
+
+    private async Task SaveEditPlaylistAsync()
+    {
+        if (_editingPlaylist == null || Library?.Playlists == null) return;
+
+        var name = (_editName ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            _editError = "Name is required.";
+            return;
+        }
+
+        if (Library.Playlists.Any(p => p.Key != _editingPlaylist.Key
+            && string.Equals(p.Name?.Trim(), name, StringComparison.OrdinalIgnoreCase)))
+        {
+            _editError = $"A playlist named '{name}' already exists. Choose a different name.";
+            return;
+        }
+
+        var description = (_editDescription ?? string.Empty).Trim();
+        _editingPlaylist.Name = name;
+        _editingPlaylist.Description = string.IsNullOrWhiteSpace(description) ? null : description;
+        _editingPlaylist = null;
+        _editError = null;
+        await SaveLibraryAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    // #45 (review): discard the title draft and return to read-only state.
+    private void CancelEditPlaylist()
+    {
+        _editingPlaylist = null;
+        _editError = null;
+        StateHasChanged();
+    }
+
+    // #45: delete a playlist after a confirm dialog. On confirm the playlist
+    // is removed, the library is saved, and the first remaining playlist is
+    // selected; deleting the last playlist leaves an empty list. Deleting a
+    // playlist that is not selected leaves the selection (and edit mode) alone.
+    private async Task StartDeletePlaylistAsync(Playlist playlist)
+    {
+        if (playlist == null || Library?.Playlists == null) return;
+
+        var parameters = new DialogParameters
+        {
+            ["PlaylistName"] = playlist.Name,
+            ["ChapterCount"] = playlist.BookChapters?.Count ?? 0,
+            ["SegmentCount"] = playlist.BookChapters?.Sum(c => c.Segments?.Count ?? 0) ?? 0
+        };
+        var dialog = await DialogService.ShowAsync<DeletePlaylistConfirmDialog>("Delete playlist?", parameters);
+        var result = await dialog.Result;
+        if (result is not { Canceled: false, Data: true }) return;
+
+        var playlistName = playlist.Name;
+        Library.Playlists.Remove(playlist);
+
+        if (selectedPlaylist?.Key == playlist.Key)
+        {
+            // The selected playlist is gone: select the first remaining (or
+            // none) and reset playback/selection state for it.
+            selectedPlaylist = Library.Playlists.FirstOrDefault();
+            _expandedChapter = null;
+            _returnTargetSegment = null;
+            _pendingSegmentIndex = -1;
+            _currentSegmentIndex = -1;
+            _playlistSegments.Clear();
+            _isEditMode = false;
+
+            if (selectedPlaylist != null)
+            {
+                var newSelected = selectedPlaylist;
+                var bookChaptersResponse = await Http.PostAsJsonAsync<IList<BookChapter>>("playlist/inflate?key=NET", newSelected.BookChapters);
+                List<BookChapter> inflatedBookChapters = new List<BookChapter>();
+                if (bookChaptersResponse.IsSuccessStatusCode)
+                    inflatedBookChapters = await bookChaptersResponse.Content.ReadFromJsonAsync<List<BookChapter>>() ?? new List<BookChapter>();
+
+                newSelected.BookChapters.Clear();
+                inflatedBookChapters.ForEach(bc => newSelected.BookChapters.Add(bc));
+                RebuildPlaylistSegments();
+                _currentSegmentIndex = _playlistSegments.Any() ? 0 : -1;
+                hideChapters = false;
+            }
+            else
+            {
+                hideChapters = true;
+            }
+        }
+
+        await SaveLibraryAsync();
+        Snackbar.Add($"Playlist '{playlistName}' deleted.", Severity.Info);
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task DeleteSegment(BookChapter chapter, Segment segment)
@@ -979,7 +1246,7 @@
 
         // #42: deleting the last segment leaves an empty chapter. Offer to
         // delete the chapter too; keeping it leaves the empty-chapter panel
-        // (Add segment / Delete chapter) in place.
+        // (Add Verses / Delete chapter) in place.
         if (!chapter.Segments.Any() && await PromptDeleteChapterAsync(chapter, wasLastSegment: true))
         {
             await DeleteChapterCoreAsync(chapter, pendingSegment);
@@ -1027,6 +1294,8 @@
     // sync by segment identity (same pattern as OnBookChapterDropped), and save.
     private async Task DeleteChapterCoreAsync(BookChapter chapter, Segment? pendingSegment)
     {
+        if (selectedPlaylist?.BookChapters == null) return;
+
         var playingSegment = CurrentSegment?.Segment;
 
         selectedPlaylist.BookChapters.Remove(chapter);

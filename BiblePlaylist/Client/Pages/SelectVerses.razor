@@ -1,4 +1,4 @@
-@page "/edit-segment"
+@page "/select-verses"
 @implements IDisposable
 @using BiblePlaylist.Client.Events
 @using BiblePlaylist.Client.Shared
@@ -13,7 +13,7 @@
 @inject HttpClient Http
 @inject Blazored.LocalStorage.ILocalStorageService localStorage
 @inject IJSRuntime JSRuntime
-@inject ILogger<SegmentEditor> logger
+@inject ILogger<SelectVerses> logger
 @inject IDelegateLibrary delegateLibrary
 @inject Config.Endpoints endpoints
 @inject NavigationManager NavManager
@@ -59,7 +59,7 @@
                 {
                     <MudIcon Icon="@Icons.Material.Filled.PlayArrow" />
                 }
-                @(_isPlaying ? "Stop" : "Play segment")
+                @(_isPlaying ? "Stop" : "Play Verses")
             </MudButton>
             <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveSegment">Save</MudButton>
             <MudButton Variant="Variant.Text" Color="Color.Secondary" OnClick="CancelEdit">Cancel</MudButton>
@@ -92,7 +92,7 @@
         else
         {
             <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="mb-3">
-                Segment: @(ShowSegmentRange()) · Segment time: @(FormatTime(SegmentDurationSeconds)) · Chapter length: @(FormatTime(ChapterTotalSeconds))
+                Verses: @(ShowSegmentRange()) · Time: @(FormatTime(SegmentDurationSeconds)) · Chapter length: @(FormatTime(ChapterTotalSeconds))
             </MudAlert>
         }
 
@@ -173,13 +173,16 @@
     // #37: the Read page can pre-select a verse range for a new segment.
     [Parameter] [SupplyParameterFromQuery] public int SelectStart { get; set; }
     [Parameter] [SupplyParameterFromQuery] public int SelectEnd { get; set; }
+    // #45: set to 1 when the editor was entered from the playlist's edit mode.
+    // Carried through to the return URL so the playlist restores edit mode.
+    [Parameter] [SupplyParameterFromQuery] public int Edit { get; set; }
 
     private decimal _segmentStartAudio;
     private decimal _segmentEndAudio;
     private string _chapterAudioUrl = string.Empty;
     private string _bookName = "";
     private System.Timers.Timer? _playbackTimer;
-    private DotNetObjectReference<SegmentEditor>? _dotNetRef;
+    private DotNetObjectReference<SelectVerses>? _dotNetRef;
 
     protected override async Task OnInitializedAsync()
     {
@@ -383,7 +386,7 @@
 
         var min = _selectedVerseNumbers.Min();
         var max = _selectedVerseNumbers.Max();
-        return $"{min}-{max} ({_selectedVerseNumbers.Count} verses)";
+        return $"{min}-{max}";
     }
 
     private async Task ToggleVerseAsync(int verseNumber)
@@ -644,7 +647,10 @@
                     $"&book={book}&chapter={chapter}" +
                     $"&playlist={System.Net.WebUtility.UrlEncode(Playlist ?? string.Empty)}" +
                     "&segmentId=0&selectStart=0&selectEnd=0";
-        return $"/edit-segment?{query}";
+        // #45: preserve the edit flag on a chapter switch.
+        if (Edit != 0)
+            query += "&edit=1";
+        return $"/select-verses?{query}";
     }
 
     private async Task PersistSegmentAsync(Segment segment)
@@ -779,6 +785,9 @@
         var query = $"playlist={System.Net.WebUtility.UrlEncode(Playlist)}&library={System.Net.WebUtility.UrlEncode(LibraryCode ?? string.Empty)}&book={Book}&chapter={Chapter}";
         if (segmentId > 0)
             query += $"&segmentId={segmentId}";
+        // #45: carry the edit flag back so the playlist restores edit mode.
+        if (Edit != 0)
+            query += "&edit=1";
         return $"/playlists?{query}";
     }
 

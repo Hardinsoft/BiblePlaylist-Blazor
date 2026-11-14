@@ -25,8 +25,9 @@ namespace BiblePlaylist.Tests
     /// <summary>
     /// Tests for #30 (Play after return from the segment editor), #31
     /// (double-click to jump; single-click only within the playing segment),
-    /// #37 (Add segment entry points) and #42 (deleting the last segment of
-    /// a chapter prompts to delete the chapter too).
+    /// #37 (Add segment entry points), #42 (deleting the last segment of
+    /// a chapter prompts to delete the chapter too) and #45 (edit/delete
+    /// playlists; edit mode hides the edit controls in listen/read mode).
     /// Renders NavPlaylistMenu on a return URL:
     /// /playlists?playlist=test-key&library=...&book=43&chapter=1
     ///   &segmentId=2
@@ -150,29 +151,44 @@ namespace BiblePlaylist.Tests
         /// Waits until inflate has completed (verse rows only render then).
         /// </summary>
         private IRenderedComponent<BiblePlaylist.Client.Shared.NavPlaylistMenu> RenderMenu(
-            List<BookChapter> chapters, int book, int chapter, int segmentId = 0, string? description = "Test playlist")
+            List<BookChapter> chapters, int book, int chapter, int segmentId = 0, string? description = "Test playlist", bool edit = false)
+        {
+            var playlist = new Playlist
+            {
+                Key = "test-key",
+                Name = "Test Playlist",
+                Description = description,
+                BookChapters = chapters
+            };
+            return RenderMenuWithPlaylists(new List<Playlist> { playlist }, "test-key", book, chapter, segmentId, edit);
+        }
+
+        /// <summary>
+        /// #45: render the menu for the given playlists, navigated to via the
+        /// return URL so the given playlist is selected and the given chapter
+        /// is expanded. Waits until inflate has completed (verse rows only
+        /// render then). The edit flag appends edit=1 to the return URL, which
+        /// restores edit mode on return. The wait assumes the selected
+        /// playlist's first chapter has a verse-1 segment.
+        /// </summary>
+        private IRenderedComponent<BiblePlaylist.Client.Shared.NavPlaylistMenu> RenderMenuWithPlaylists(
+            List<Playlist> playlists, string selectedKey, int book, int chapter, int segmentId = 0, bool edit = false)
         {
             var library = new Library
             {
                 Code = "library_greg_hardin_live_com",
-                Playlists = new List<Playlist>
-                {
-                    new Playlist
-                    {
-                        Key = "test-key",
-                        Name = "Test Playlist",
-                        Description = description,
-                        BookChapters = chapters
-                    }
-                }
+                Playlists = playlists
             };
             HttpHandler.SetupGet("library?key=library_greg_hardin_live_com", JsonConvert.SerializeObject(library));
+            var selected = playlists.First(p => p.Key == selectedKey);
             HttpHandler.SetupPost("playlist/inflate",
-                System.Text.Json.JsonSerializer.Serialize(chapters.Select(InflatedChapter).ToList()));
+                System.Text.Json.JsonSerializer.Serialize(
+                    (selected.BookChapters ?? new List<BookChapter>()).Select(InflatedChapter).ToList()));
             HttpHandler.SetupPut("library");
 
-            var url = $"http://localhost/playlists?playlist=test-key&library=library_greg_hardin_live_com&book={book}&chapter={chapter}";
+            var url = $"http://localhost/playlists?playlist={selectedKey}&library=library_greg_hardin_live_com&book={book}&chapter={chapter}";
             if (segmentId > 0) url += $"&segmentId={segmentId}";
+            if (edit) url += "&edit=1";
             Services.GetRequiredService<NavigationManager>().NavigateTo(url);
 
             var cut = RenderComponent<BiblePlaylist.Client.Shared.NavPlaylistMenu>();
@@ -224,6 +240,104 @@ namespace BiblePlaylist.Tests
             var chapter = playlist.BookChapters![chapterIndex];
             var method = type.GetMethod("DeleteChapterAsync", BindingFlags.NonPublic | BindingFlags.Instance)!;
             return cut.InvokeAsync(() => (Task)method.Invoke(instance, new object[] { chapter })!);
+        }
+
+        /// <summary>
+        /// #45 (review): start the playlist ⋮ menu's "Edit name & description"
+        /// handler for the given playlist (by library order). The title panel
+        /// expands inline — no dialog — so the form renders in the component's
+        /// markup and the tests drive its inputs and Save / Cancel buttons
+        /// directly. Same MudMenu popover limitation as StartDeleteSegment:
+        /// the menu items never render in bUnit, so the handler the menu item
+        /// is wired to is driven here and the click path is covered by the
+        /// real-browser check. The handler is synchronous (it only opens the
+        /// form); awaiting the InvokeAsync ensures the render has happened
+        /// before the test proceeds.
+        /// </summary>
+        private static async Task StartEditPlaylist(
+            IRenderedComponent<BiblePlaylist.Client.Shared.NavPlaylistMenu> cut, int playlistIndex)
+        {
+            var instance = cut.Instance;
+            var type = typeof(BiblePlaylist.Client.Shared.NavPlaylistMenu);
+            var library = (Library)type
+                .GetProperty("Library", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .GetValue(instance)!;
+            var playlist = library.Playlists![playlistIndex];
+            var method = type.GetMethod("StartEditPlaylist", BindingFlags.NonPublic | BindingFlags.Instance)!;
+            await cut.InvokeAsync(() => method.Invoke(instance, new object[] { playlist }));
+        }
+
+        /// <summary>
+        /// #45 (review): click a button by its exact label inside a playlist
+        /// row (the inline title-edit form's Save / Cancel).
+        /// </summary>
+        private static void ClickRowButton(IRenderedComponent<BiblePlaylist.Client.Shared.NavPlaylistMenu> cut, string rowId, string text)
+        {
+            cut.FindAll($"#{rowId} button").First(b => b.TextContent.Trim() == text).Click();
+        }
+
+        /// <summary>
+        /// #45: start the playlist ⋮ menu's "Delete playlist" handler for the
+        /// given playlist (by library order). Same MudMenu popover limitation
+        /// as StartEditPlaylist.
+        /// </summary>
+        private static Task StartDeletePlaylistAsync(
+            IRenderedComponent<BiblePlaylist.Client.Shared.NavPlaylistMenu> cut, int playlistIndex)
+        {
+            var instance = cut.Instance;
+            var type = typeof(BiblePlaylist.Client.Shared.NavPlaylistMenu);
+            var library = (Library)type
+                .GetProperty("Library", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .GetValue(instance)!;
+            var playlist = library.Playlists![playlistIndex];
+            var method = type.GetMethod("StartDeletePlaylistAsync", BindingFlags.NonPublic | BindingFlags.Instance)!;
+            return cut.InvokeAsync(() => (Task)method.Invoke(instance, new object[] { playlist })!);
+        }
+
+        /// <summary>
+        /// #45: invoke the playlist ⋮ menu's edit-mode toggle handler for the
+        /// selected playlist (the menu item is wired to ToggleEditModeAsync;
+        /// the menu items never render in bUnit). Toggles edit mode on or off.
+        /// </summary>
+        private static async Task ToggleEditMode(
+            IRenderedComponent<BiblePlaylist.Client.Shared.NavPlaylistMenu> cut)
+        {
+            var instance = cut.Instance;
+            var type = typeof(BiblePlaylist.Client.Shared.NavPlaylistMenu);
+            var playlist = (Playlist)type
+                .GetProperty("selectedPlaylist", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .GetValue(instance)!;
+            var method = type.GetMethod("ToggleEditModeAsync", BindingFlags.NonPublic | BindingFlags.Instance)!;
+            await cut.InvokeAsync(() => (Task)method.Invoke(instance, new object[] { playlist })!);
+        }
+
+        private static bool GetBool(IRenderedComponent<BiblePlaylist.Client.Shared.NavPlaylistMenu> cut, string field)
+        {
+            var f = typeof(BiblePlaylist.Client.Shared.NavPlaylistMenu)
+                .GetField(field, BindingFlags.NonPublic | BindingFlags.Instance)!;
+            return (bool)f.GetValue(cut.Instance)!;
+        }
+
+        private static Playlist? GetSelectedPlaylist(IRenderedComponent<BiblePlaylist.Client.Shared.NavPlaylistMenu> cut)
+        {
+            var type = typeof(BiblePlaylist.Client.Shared.NavPlaylistMenu);
+            return (Playlist?)type
+                .GetProperty("selectedPlaylist", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .GetValue(cut.Instance);
+        }
+
+        /// <summary>
+        /// #45: whether any edit control is present in the markup — a
+        /// per-segment ⋮ menu, a per-chapter Add Verses button, the
+        /// Add Chapter button, or a chapter header ⋮ menu. In listen/read
+        /// mode none of them render.
+        /// </summary>
+        private static bool HasEditControls(IRenderedComponent<BiblePlaylist.Client.Shared.NavPlaylistMenu> cut)
+        {
+            return cut.FindAll("[aria-label='Segment options']").Count > 0
+                || cut.FindAll("[aria-label='Chapter options']").Count > 0
+                || cut.FindAll("button").Any(b => b.TextContent.Trim() == "Add Verses")
+                || cut.FindAll("button").Any(b => b.TextContent.Contains("Add Chapter"));
         }
 
         private static void ClickDialogButton(IRenderedComponent<MudDialogProvider> provider, string text)
@@ -417,22 +531,24 @@ namespace BiblePlaylist.Tests
         }
 
         /// <summary>
-        /// #37: the per-chapter "Add segment" button opens the editor in
+        /// #37: the per-chapter "Add Verses" button opens the editor in
         /// Create mode for that chapter — no segmentId in the URL.
+        /// #45: the button is an edit control, so edit mode is entered first.
         /// </summary>
         [Fact]
-        public void Chapter_AddSegment_NavigatesToEditorCreateMode()
+        public async Task Chapter_AddSegment_NavigatesToEditorCreateMode()
         {
             var cut = RenderReturnMenu();
             try
             {
+                await ToggleEditMode(cut);
                 var addButton = cut.FindAll("button")
-                    .FirstOrDefault(b => b.TextContent.Contains("Add segment"));
+                    .FirstOrDefault(b => b.TextContent.Contains("Add Verses"));
                 Assert.NotNull(addButton);
                 addButton!.Click();
 
                 var uri = Services.GetRequiredService<NavigationManager>().Uri;
-                Assert.Contains("/edit-segment?", uri);
+                Assert.Contains("/select-verses?", uri);
                 Assert.Contains("book=43", uri);
                 Assert.Contains("chapter=1", uri);
                 Assert.Contains("playlist=test-key", uri);
@@ -447,20 +563,23 @@ namespace BiblePlaylist.Tests
         /// explainer dialog, no trip to the Read page, no playlist to pick.
         /// The editor opens with no chapter (book/chapter 0), so its chapter
         /// picker is the entry point.
+        /// #45: the button is an edit control, so edit mode is entered first
+        /// and the editor URL carries edit=1.
         /// </summary>
         [Fact]
-        public void Playlist_AddSegmentToNewChapter_NavigatesToEditorCreateMode()
+        public async Task Playlist_AddSegmentToNewChapter_NavigatesToEditorCreateMode()
         {
             var cut = RenderReturnMenu();
             try
             {
+                await ToggleEditMode(cut);
                 var addButton = cut.FindAll("button")
-                    .FirstOrDefault(b => b.TextContent.Contains("Add segment to a new chapter"));
+                    .FirstOrDefault(b => b.TextContent.Contains("Add Chapter"));
                 Assert.NotNull(addButton);
                 addButton!.Click();
 
                 cut.WaitForAssertion(() =>
-                    Assert.Equal("http://localhost/edit-segment?library=library_greg_hardin_live_com&book=0&chapter=0&playlist=test-key",
+                    Assert.Equal("http://localhost/select-verses?library=library_greg_hardin_live_com&book=0&chapter=0&playlist=test-key&edit=1",
                         Services.GetRequiredService<NavigationManager>().Uri),
                     TimeSpan.FromSeconds(5));
 
@@ -520,7 +639,7 @@ namespace BiblePlaylist.Tests
         /// <summary>
         /// #42: deleting the last segment of a chapter prompts to delete the
         /// chapter too; keeping it leaves the empty chapter, which shows the
-        /// empty state with Add segment and Delete chapter actions.
+        /// empty state with Add Verses and Delete chapter actions.
         /// </summary>
         [Fact]
         public async Task DeleteLastSegment_PromptKeep_LeavesEmptyChapter()
@@ -553,8 +672,11 @@ namespace BiblePlaylist.Tests
 
                 cut.WaitForAssertion(() => Assert.Contains("No segments defined for this chapter.", cut.Markup),
                     TimeSpan.FromSeconds(5));
+                // #45: the empty-chapter actions are edit controls — enter edit
+                // mode to see them.
+                await ToggleEditMode(cut);
                 Assert.Contains(cut.FindAll("button"), b => b.TextContent.Contains("Delete chapter"));
-                Assert.Contains(cut.FindAll("button"), b => b.TextContent.Trim() == "Add segment");
+                Assert.Contains(cut.FindAll("button"), b => b.TextContent.Trim() == "Add Verses");
 
                 await deleteTask;
             }
@@ -573,6 +695,8 @@ namespace BiblePlaylist.Tests
                 book: 43, chapter: 1);
             try
             {
+                // #45: the empty-chapter Delete button is an edit control.
+                await ToggleEditMode(cut);
                 Assert.Single(cut.FindAll("button"), b => b.TextContent.Contains("Delete chapter"));
 
                 cut.FindAll("button").First(b => b.TextContent.Contains("Delete chapter")).Click();
@@ -601,13 +725,15 @@ namespace BiblePlaylist.Tests
         /// cancelling keeps the chapter and saves nothing.
         /// </summary>
         [Fact]
-        public void EmptyChapter_DeleteChapterButton_CancelKeepsChapter()
+        public async Task EmptyChapter_DeleteChapterButton_CancelKeepsChapter()
         {
             var provider = RenderComponent<MudDialogProvider>();
             var cut = RenderMenu(new List<BookChapter> { JohnEmptyChapter(), LukeTwoSegmentChapter() },
                 book: 43, chapter: 1);
             try
             {
+                // #45: the empty-chapter Delete button is an edit control.
+                await ToggleEditMode(cut);
                 cut.FindAll("button").First(b => b.TextContent.Contains("Delete chapter")).Click();
 
                 cut.WaitForAssertion(() =>
@@ -672,8 +798,10 @@ namespace BiblePlaylist.Tests
                 book: 43, chapter: 1, segmentId: 1);
             try
             {
-                // The ⋮ menu activator renders per chapter; its popover items
-                // do not render in bUnit (see StartDeleteSegment).
+                // #45: the chapter ⋮ menus are edit controls — enter edit mode
+                // to see them. The ⋮ menu activator renders per chapter; its
+                // popover items do not render in bUnit (see StartDeleteSegment).
+                await ToggleEditMode(cut);
                 Assert.Equal(2, cut.FindAll("[aria-label='Chapter options']").Count());
 
                 var deleteTask = StartDeleteChapterAsync(cut, chapterIndex: 1);
@@ -842,6 +970,368 @@ namespace BiblePlaylist.Tests
                 Assert.Equal(new[] { "Test playlist", expectedChapter, expectedSegment }, GetSpokenTexts());
             }
             finally { StopTimer(cut); }
+        }
+
+        // #45: two playlists with the same John chapter, so the inflate
+        // response is correct whichever one is selected.
+        private static List<Playlist> TwoPlaylists() => new List<Playlist>
+        {
+            new Playlist { Key = "test-key", Name = "Test Playlist", Description = "Test playlist", BookChapters = new List<BookChapter> { JohnSingleSegmentChapter() } },
+            new Playlist { Key = "second-key", Name = "Second Playlist", Description = "Second", BookChapters = new List<BookChapter> { JohnSingleSegmentChapter() } }
+        };
+
+        /// <summary>
+        /// #45 (review): saving the inline title form updates the name and
+        /// description in place — the Key never changes — PUTs the library,
+        /// keeps the playlist selected, and returns to read-only state (the
+        /// form is gone, the row shows the new name).
+        /// </summary>
+        [Fact]
+        public async Task EditPlaylist_Save_UpdatesNameAndDescriptionKeepsSelected()
+        {
+            var cut = RenderMenu(new List<BookChapter> { JohnSingleSegmentChapter() }, 43, 1);
+
+            await StartEditPlaylist(cut, playlistIndex: 0);
+            // The title panel expands inline: name field, description below
+            // it, Save / Cancel — no dialog.
+            cut.WaitForAssertion(() => Assert.Equal(2, cut.FindAll("#Test_Playlist input").Count), TimeSpan.FromSeconds(5));
+
+            cut.FindAll("#Test_Playlist input").First().Input("Renamed Playlist");
+            cut.FindAll("#Test_Playlist input").Skip(1).First().Input("A new description");
+            ClickRowButton(cut, "Test_Playlist", "Save");
+
+            // The save is async (library PUT); wait for it to be recorded.
+            cut.WaitForAssertion(() => Assert.Contains(HttpHandler.Requests, req => req.Method == HttpMethod.Put), TimeSpan.FromSeconds(5));
+            var saved = await GetSavedLibrary();
+            Assert.NotNull(saved);
+            var playlist = Assert.Single(saved!.Playlists);
+            Assert.Equal("test-key", playlist.Key);
+            Assert.Equal("Renamed Playlist", playlist.Name);
+            Assert.Equal("A new description", playlist.Description);
+
+            var selected = GetSelectedPlaylist(cut);
+            Assert.NotNull(selected);
+            Assert.Equal("test-key", selected!.Key);
+            Assert.Equal("Renamed Playlist", selected.Name);
+            Assert.NotNull(cut.Find("#Renamed_Playlist"));
+            Assert.Empty(cut.FindAll("#Renamed_Playlist input"));
+        }
+
+        /// <summary>
+        /// #45 (review, Greg 2026-11-13): spaces are allowed while typing the
+        /// name and description — they are trimmed only on save, not on input.
+        /// (In the browser, MudListItem's key interceptor used to swallow the
+        /// Space key inside the row, so the form is no longer rendered inside
+        /// a MudListItem; this test pins the trim-on-save half of the rule.)
+        /// </summary>
+        [Fact]
+        public async Task EditPlaylist_Save_TrimsSpacesButKeepsInternalOnes()
+        {
+            var cut = RenderMenu(new List<BookChapter> { JohnSingleSegmentChapter() }, 43, 1);
+
+            await StartEditPlaylist(cut, playlistIndex: 0);
+            cut.WaitForAssertion(() => Assert.Equal(2, cut.FindAll("#Test_Playlist input").Count), TimeSpan.FromSeconds(5));
+
+            cut.FindAll("#Test_Playlist input").First().Input("  My Test Playlist  ");
+            cut.FindAll("#Test_Playlist input").Skip(1).First().Input("  A new description  ");
+            ClickRowButton(cut, "Test_Playlist", "Save");
+
+            cut.WaitForAssertion(() => Assert.Contains(HttpHandler.Requests, req => req.Method == HttpMethod.Put), TimeSpan.FromSeconds(5));
+            var saved = await GetSavedLibrary();
+            Assert.NotNull(saved);
+            var playlist = Assert.Single(saved!.Playlists);
+            Assert.Equal("My Test Playlist", playlist.Name);
+            Assert.Equal("A new description", playlist.Description);
+
+            Assert.NotNull(cut.Find("#My_Test_Playlist"));
+            Assert.Empty(cut.FindAll("#My_Test_Playlist input"));
+        }
+
+        /// <summary>
+        /// #45 (review): an empty name is rejected inline with a clear message
+        /// and nothing is saved; the form stays open so the user can fix it.
+        /// </summary>
+        [Fact]
+        public async Task EditPlaylist_EmptyName_Rejected()
+        {
+            var cut = RenderMenu(new List<BookChapter> { JohnSingleSegmentChapter() }, 43, 1);
+
+            await StartEditPlaylist(cut, playlistIndex: 0);
+            cut.WaitForAssertion(() => Assert.Equal(2, cut.FindAll("#Test_Playlist input").Count), TimeSpan.FromSeconds(5));
+
+            cut.FindAll("#Test_Playlist input").First().Input("   ");
+            ClickRowButton(cut, "Test_Playlist", "Save");
+
+            cut.WaitForAssertion(() => Assert.Contains("Name is required.", cut.Find("#Test_Playlist").TextContent), TimeSpan.FromSeconds(5));
+            Assert.Null(await GetSavedLibrary());
+
+            // The form stays open; Cancel discards and returns to read-only.
+            ClickRowButton(cut, "Test_Playlist", "Cancel");
+            Assert.Null(await GetSavedLibrary());
+            Assert.Empty(cut.FindAll("#Test_Playlist input"));
+        }
+
+        /// <summary>
+        /// #45 (review): a duplicate name (case-insensitive) is rejected
+        /// inline with a clear message and nothing is saved.
+        /// </summary>
+        [Fact]
+        public async Task EditPlaylist_DuplicateName_Rejected()
+        {
+            var cut = RenderMenuWithPlaylists(TwoPlaylists(), "test-key", 43, 1);
+
+            await StartEditPlaylist(cut, playlistIndex: 0);
+            cut.WaitForAssertion(() => Assert.Equal(2, cut.FindAll("#Test_Playlist input").Count), TimeSpan.FromSeconds(5));
+
+            cut.FindAll("#Test_Playlist input").First().Input("second playlist");
+            ClickRowButton(cut, "Test_Playlist", "Save");
+
+            cut.WaitForAssertion(() => Assert.Contains("already exists", cut.Find("#Test_Playlist").TextContent), TimeSpan.FromSeconds(5));
+            Assert.Null(await GetSavedLibrary());
+
+            ClickRowButton(cut, "Test_Playlist", "Cancel");
+            Assert.Null(await GetSavedLibrary());
+            Assert.Empty(cut.FindAll("#Test_Playlist input"));
+        }
+
+        /// <summary>
+        /// #45 (review): Cancel discards the title draft and returns to
+        /// read-only state with nothing saved, even after the fields were
+        /// changed.
+        /// </summary>
+        [Fact]
+        public async Task EditPlaylist_Cancel_DiscardsChanges()
+        {
+            var cut = RenderMenu(new List<BookChapter> { JohnSingleSegmentChapter() }, 43, 1);
+
+            await StartEditPlaylist(cut, playlistIndex: 0);
+            cut.WaitForAssertion(() => Assert.Equal(2, cut.FindAll("#Test_Playlist input").Count), TimeSpan.FromSeconds(5));
+
+            cut.FindAll("#Test_Playlist input").First().Input("Renamed Playlist");
+            cut.FindAll("#Test_Playlist input").Skip(1).First().Input("A new description");
+            ClickRowButton(cut, "Test_Playlist", "Cancel");
+
+            Assert.Null(await GetSavedLibrary());
+            // Read-only again, with the original name and description intact.
+            Assert.NotNull(cut.Find("#Test_Playlist"));
+            Assert.Empty(cut.FindAll("#Test_Playlist input"));
+            var selected = GetSelectedPlaylist(cut);
+            Assert.NotNull(selected);
+            Assert.Equal("Test Playlist", selected!.Name);
+            Assert.Equal("Test playlist", selected.Description);
+        }
+
+        /// <summary>
+        /// #45 (review): while a playlist's title is being edited, tapping
+        /// its row does not toggle it — the playlist stays selected and its
+        /// chapters stay expanded. Once the edit is cancelled, tapping the
+        /// row toggles again (collapses back to the playlist list).
+        /// </summary>
+        [Fact]
+        public async Task EditPlaylist_RowClickWhileEditing_DoesNotToggle()
+        {
+            var cut = RenderMenu(new List<BookChapter> { JohnSingleSegmentChapter() }, 43, 1);
+            try
+            {
+                // The return URL leaves the playlist selected with chapters shown.
+                Assert.Single(cut.FindAll("#verse-1-1-1"));
+
+                await StartEditPlaylist(cut, playlistIndex: 0);
+                cut.WaitForAssertion(() => Assert.Equal(2, cut.FindAll("#Test_Playlist input").Count), TimeSpan.FromSeconds(5));
+
+                // Tap the row while editing: no toggle — the chapters stay shown.
+                cut.Find("#Test_Playlist").Click();
+                Assert.Single(cut.FindAll("#verse-1-1-1"));
+                Assert.Equal("test-key", GetSelectedPlaylist(cut)!.Key);
+
+                // Cancel the edit, then the same tap toggles (collapses) again.
+                ClickRowButton(cut, "Test_Playlist", "Cancel");
+                cut.Find("#Test_Playlist").Click();
+                cut.WaitForAssertion(() => Assert.Empty(cut.FindAll("#verse-1-1-1")), TimeSpan.FromSeconds(5));
+            }
+            finally { StopTimer(cut); }
+        }
+
+        /// <summary>
+        /// #45: deleting a playlist (confirm) removes it, saves, and selects
+        /// the first remaining playlist.
+        /// </summary>
+        [Fact]
+        public async Task DeletePlaylist_Confirm_RemovesAndSelectsFirstRemaining()
+        {
+            var cut = RenderMenuWithPlaylists(TwoPlaylists(), "test-key", 43, 1);
+            var provider = RenderComponent<MudDialogProvider>();
+
+            var deleteTask = StartDeletePlaylistAsync(cut, playlistIndex: 0);
+            cut.WaitForAssertion(() => Assert.Contains("Delete playlist?", provider.Markup), TimeSpan.FromSeconds(5));
+
+            ClickDialogButton(provider, "Delete playlist");
+            await deleteTask;
+
+            var saved = await GetSavedLibrary();
+            Assert.NotNull(saved);
+            var remaining = Assert.Single(saved!.Playlists);
+            Assert.Equal("second-key", remaining.Key);
+            Assert.Equal("Second Playlist", remaining.Name);
+
+            var selected = GetSelectedPlaylist(cut);
+            Assert.NotNull(selected);
+            Assert.Equal("second-key", selected!.Key);
+        }
+
+        /// <summary>
+        /// #45: cancelling the delete confirm keeps the playlist and saves nothing.
+        /// </summary>
+        [Fact]
+        public async Task DeletePlaylist_Cancel_KeepsPlaylist()
+        {
+            var cut = RenderMenu(new List<BookChapter> { JohnSingleSegmentChapter() }, 43, 1);
+            var provider = RenderComponent<MudDialogProvider>();
+
+            var deleteTask = StartDeletePlaylistAsync(cut, playlistIndex: 0);
+            cut.WaitForAssertion(() => Assert.Contains("Delete playlist?", provider.Markup), TimeSpan.FromSeconds(5));
+
+            ClickDialogButton(provider, "Keep playlist");
+            await deleteTask;
+
+            Assert.Null(await GetSavedLibrary());
+            var selected = GetSelectedPlaylist(cut);
+            Assert.NotNull(selected);
+            Assert.Equal("test-key", selected!.Key);
+        }
+
+        /// <summary>
+        /// #45: deleting the last playlist is allowed and leaves an empty list
+        /// with no playlist selected.
+        /// </summary>
+        [Fact]
+        public async Task DeletePlaylist_LastPlaylist_LeavesEmptyList()
+        {
+            var cut = RenderMenu(new List<BookChapter> { JohnSingleSegmentChapter() }, 43, 1);
+            var provider = RenderComponent<MudDialogProvider>();
+
+            var deleteTask = StartDeletePlaylistAsync(cut, playlistIndex: 0);
+            cut.WaitForAssertion(() => Assert.Contains("Delete playlist?", provider.Markup), TimeSpan.FromSeconds(5));
+
+            ClickDialogButton(provider, "Delete playlist");
+            await deleteTask;
+
+            var saved = await GetSavedLibrary();
+            Assert.NotNull(saved);
+            Assert.Empty(saved!.Playlists);
+            Assert.Null(GetSelectedPlaylist(cut));
+            cut.WaitForAssertion(() => Assert.Empty(cut.FindAll(".mud-list-item")), TimeSpan.FromSeconds(5));
+        }
+
+        /// <summary>
+        /// #45: in listen/read mode (the default) the edit controls are hidden:
+        /// no segment ⋮ menus, no Add Verses buttons, no Add Chapter button,
+        /// and no chapter ⋮ menus.
+        /// </summary>
+        [Fact]
+        public void EditMode_ByDefault_HidesEditControls()
+        {
+            var cut = RenderMenu(new List<BookChapter> { ChapterWithSegments(inflated: false) }, 43, 1, segmentId: 2);
+
+            Assert.False(GetBool(cut, "_isEditMode"));
+            Assert.False(HasEditControls(cut));
+            Assert.DoesNotContain("Done editing", cut.Markup);
+        }
+
+        /// <summary>
+        /// #45: "Edit playlist" reveals the edit controls for the playlist.
+        /// </summary>
+        [Fact]
+        public async Task EditMode_EnterEditSegments_RevealsEditControls()
+        {
+            var cut = RenderMenu(new List<BookChapter> { ChapterWithSegments(inflated: false) }, 43, 1, segmentId: 2);
+
+            Assert.False(HasEditControls(cut));
+            await ToggleEditMode(cut);
+
+            cut.WaitForAssertion(() => Assert.True(HasEditControls(cut)), TimeSpan.FromSeconds(5));
+            Assert.True(GetBool(cut, "_isEditMode"));
+            Assert.Contains("Done editing", cut.Markup);
+        }
+
+        /// <summary>
+        /// #45: the "Done editing" button returns to listen/read mode and
+        /// hides the edit controls again.
+        /// </summary>
+        [Fact]
+        public async Task EditMode_DoneEditingButton_ExitsEditMode()
+        {
+            var cut = RenderMenu(new List<BookChapter> { ChapterWithSegments(inflated: false) }, 43, 1, segmentId: 2);
+            await ToggleEditMode(cut);
+            cut.WaitForAssertion(() => Assert.True(HasEditControls(cut)), TimeSpan.FromSeconds(5));
+
+            cut.FindAll("button").First(b => b.TextContent.Contains("Done editing")).Click();
+            cut.WaitForAssertion(() => Assert.False(HasEditControls(cut)), TimeSpan.FromSeconds(5));
+            Assert.False(GetBool(cut, "_isEditMode"));
+        }
+
+        /// <summary>
+        /// #45: toggling edit mode off (the playlist ⋮ menu's "Done editing"
+        /// item is wired to the same handler; the menu items never render in
+        /// bUnit, so the handler is driven here and the click path is covered
+        /// by the real-browser check) hides the edit controls again.
+        /// </summary>
+        [Fact]
+        public async Task EditMode_ToggleOff_HidesEditControls()
+        {
+            var cut = RenderMenu(new List<BookChapter> { ChapterWithSegments(inflated: false) }, 43, 1, segmentId: 2);
+            await ToggleEditMode(cut);
+            cut.WaitForAssertion(() => Assert.True(HasEditControls(cut)), TimeSpan.FromSeconds(5));
+
+            await ToggleEditMode(cut);
+            cut.WaitForAssertion(() => Assert.False(HasEditControls(cut)), TimeSpan.FromSeconds(5));
+            Assert.False(GetBool(cut, "_isEditMode"));
+        }
+
+        /// <summary>
+        /// #45: selecting a different playlist exits edit mode — the newly
+        /// selected playlist shows in listen/read mode.
+        /// </summary>
+        [Fact]
+        public async Task EditMode_SelectDifferentPlaylist_ExitsEditMode()
+        {
+            var playlists = new List<Playlist>
+            {
+                new Playlist { Key = "test-key", Name = "Test Playlist", Description = "Test playlist", BookChapters = new List<BookChapter> { ChapterWithSegments(inflated: false) } },
+                new Playlist { Key = "second-key", Name = "Second Playlist", Description = "Second", BookChapters = new List<BookChapter> { ChapterWithSegments(inflated: false) } }
+            };
+            var cut = RenderMenuWithPlaylists(playlists, "test-key", 43, 1, segmentId: 2);
+            await ToggleEditMode(cut);
+            cut.WaitForAssertion(() => Assert.True(HasEditControls(cut)), TimeSpan.FromSeconds(5));
+
+            cut.Find("#Second_Playlist").Click();
+            cut.WaitForAssertion(() => Assert.False(GetBool(cut, "_isEditMode")), TimeSpan.FromSeconds(5));
+            Assert.False(HasEditControls(cut));
+            Assert.Equal("second-key", GetSelectedPlaylist(cut)!.Key);
+        }
+
+        /// <summary>
+        /// #45: returning from the editor with edit=1 restores edit mode.
+        /// </summary>
+        [Fact]
+        public void EditMode_ReturnWithEditFlag_RestoresEditMode()
+        {
+            var cut = RenderMenu(new List<BookChapter> { ChapterWithSegments(inflated: false) }, 43, 1, segmentId: 2, edit: true);
+
+            Assert.True(GetBool(cut, "_isEditMode"));
+            Assert.True(HasEditControls(cut));
+        }
+
+        /// <summary>
+        /// #45: returning from the editor without edit=1 stays in listen/read mode.
+        /// </summary>
+        [Fact]
+        public void EditMode_ReturnWithoutEditFlag_StaysInListenMode()
+        {
+            var cut = RenderMenu(new List<BookChapter> { ChapterWithSegments(inflated: false) }, 43, 1, segmentId: 2);
+
+            Assert.False(GetBool(cut, "_isEditMode"));
+            Assert.False(HasEditControls(cut));
         }
     }
 }

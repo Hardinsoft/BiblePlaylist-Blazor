@@ -24,7 +24,7 @@ namespace BiblePlaylist.Tests
     /// <summary>
     /// Tests for #37 (Read page: verse selection + add to playlist).
     /// RecordingJSRuntime and RecordingHttpMessageHandler are shared from
-    /// SegmentEditorTests (same assembly and namespace).
+    /// SelectVersesTests (same assembly and namespace).
     /// </summary>
     public class ReadVersesTests : Bunit.TestContext
     {
@@ -155,7 +155,7 @@ namespace BiblePlaylist.Tests
             christmasButton.Click();
 
             var uri = Services.GetRequiredService<NavigationManager>().Uri;
-            Assert.Contains("/edit-segment?", uri);
+            Assert.Contains("/select-verses?", uri);
             Assert.Contains("library=library_greg_hardin_live_com", uri);
             Assert.Contains("book=1", uri);
             Assert.Contains("chapter=1", uri);

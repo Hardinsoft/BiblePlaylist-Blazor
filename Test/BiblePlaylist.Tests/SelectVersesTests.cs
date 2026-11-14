@@ -103,12 +103,12 @@ namespace BiblePlaylist.Tests
         }
     }
 
-    public class SegmentEditorTests : Bunit.TestContext
+    public class SelectVersesTests : Bunit.TestContext
     {
         public RecordingJSRuntime JSRuntime { get; private set; } = null!;
         public RecordingHttpMessageHandler HttpHandler { get; private set; } = null!;
 
-        public SegmentEditorTests()
+        public SelectVersesTests()
         {
             Services.AddMudBlazorDialog();
             Services.AddMudServices();
@@ -187,8 +187,8 @@ namespace BiblePlaylist.Tests
             HttpHandler.SetupPut("library");
         }
 
-        private IRenderedComponent<BiblePlaylist.Client.Pages.SegmentEditor> RenderEditor(int book, int chapter,
-            string? playlist = null, int? segmentId = null, int? selectStart = null, int? selectEnd = null, string libraryCode = "test-library")
+        private IRenderedComponent<BiblePlaylist.Client.Pages.SelectVerses> RenderEditor(int book, int chapter,
+            string? playlist = null, int? segmentId = null, int? selectStart = null, int? selectEnd = null, string libraryCode = "test-library", int? edit = null)
         {
             var ps = new List<ComponentParameter>
             {
@@ -209,17 +209,21 @@ namespace BiblePlaylist.Tests
                 ps.Add(ComponentParameter.CreateParameter("SelectStart", selectStart.Value));
                 ps.Add(ComponentParameter.CreateParameter("SelectEnd", selectEnd.Value));
             }
-            return RenderComponent<BiblePlaylist.Client.Pages.SegmentEditor>(ps.ToArray());
+            if (edit.HasValue)
+            {
+                ps.Add(ComponentParameter.CreateParameter("Edit", edit.Value));
+            }
+            return RenderComponent<BiblePlaylist.Client.Pages.SelectVerses>(ps.ToArray());
         }
 
         // Use reflection to set selection on the component instance — avoids Bunit 1.40.0
         // broken RefreshableElementCollection indexer entirely.
         // After mutating the field, flush an empty InvokeAsync to force a render cycle so
         // the DOM picks up the new selection state.
-        private void SetSelectedVerses(IRenderedComponent<BiblePlaylist.Client.Pages.SegmentEditor> cut,
+        private void SetSelectedVerses(IRenderedComponent<BiblePlaylist.Client.Pages.SelectVerses> cut,
             IEnumerable<int> verseNumbers)
         {
-            var type = typeof(BiblePlaylist.Client.Pages.SegmentEditor);
+            var type = typeof(BiblePlaylist.Client.Pages.SelectVerses);
             var field = type.GetField("_selectedVerseNumbers", BindingFlags.NonPublic | BindingFlags.Instance);
             var instance = cut.Instance;
             if (field == null || instance == null) return;
@@ -230,14 +234,14 @@ namespace BiblePlaylist.Tests
 
         // Read the private selection field — the ToggleVerseAsync path is the only
         // way the UI changes it, so tests below exercise the real click handler.
-        private HashSet<int> GetSelectedVerses(IRenderedComponent<BiblePlaylist.Client.Pages.SegmentEditor> cut)
+        private HashSet<int> GetSelectedVerses(IRenderedComponent<BiblePlaylist.Client.Pages.SelectVerses> cut)
         {
-            var field = typeof(BiblePlaylist.Client.Pages.SegmentEditor)
+            var field = typeof(BiblePlaylist.Client.Pages.SelectVerses)
                 .GetField("_selectedVerseNumbers", BindingFlags.NonPublic | BindingFlags.Instance);
             return (field?.GetValue(cut.Instance) as HashSet<int>) ?? new HashSet<int>();
         }
 
-        private void ClickVerseRow(IRenderedComponent<BiblePlaylist.Client.Pages.SegmentEditor> cut, int verseNumber)
+        private void ClickVerseRow(IRenderedComponent<BiblePlaylist.Client.Pages.SelectVerses> cut, int verseNumber)
         {
             var row = cut.FindAll("div.d-flex.align-start")
                 .FirstOrDefault(d => d.TextContent.Contains($"Verse {verseNumber} text."));
@@ -263,7 +267,7 @@ namespace BiblePlaylist.Tests
             cut.WaitForAssertion(() =>
             {
                 Assert.Equal(new HashSet<int> { 1, 2, 3, 4, 5 }, GetSelectedVerses(cut));
-                Assert.Contains("Segment: 1-5 (5 verses)", cut.Markup);
+                Assert.Contains("Verses: 1-5", cut.Markup);
             });
         }
 
@@ -484,7 +488,7 @@ namespace BiblePlaylist.Tests
             await cut.InvokeAsync(() => Task.Delay(50));
 
             Assert.NotNull(cut);
-            Assert.Contains("2-4 (3 verses)", cut.Markup);
+            Assert.Contains("2-4", cut.Markup);
             Assert.Contains("Verse 2 text.", cut.Markup);
             Assert.Contains("Verse 3 text.", cut.Markup);
             Assert.Contains("Verse 4 text.", cut.Markup);
@@ -503,7 +507,7 @@ namespace BiblePlaylist.Tests
             Assert.Contains("Select verses to create a new segment", cut.Markup);
         }
 
-        private async Task ClickSave(IRenderedComponent<BiblePlaylist.Client.Pages.SegmentEditor> cut)
+        private async Task ClickSave(IRenderedComponent<BiblePlaylist.Client.Pages.SelectVerses> cut)
         {
             await cut.InvokeAsync(() =>
             {
@@ -696,7 +700,7 @@ namespace BiblePlaylist.Tests
             var cut = RenderEditor(1, 5, "test-playlist", 1);
             await cut.InvokeAsync(() => Task.Delay(50));
 
-            Assert.Contains("2-4 (3 verses)", cut.Markup);
+            Assert.Contains("2-4", cut.Markup);
 
             SetSelectedVerses(cut, new[] { 1, 2, 3 });
             await ClickSave(cut);
@@ -735,7 +739,7 @@ namespace BiblePlaylist.Tests
             var cut = RenderEditor(1, 5, "test-playlist", selectStart: 1, selectEnd: 3);
             await cut.InvokeAsync(() => Task.Delay(50));
 
-            Assert.Contains("1-3 (3 verses)", cut.Markup);
+            Assert.Contains("1-3", cut.Markup);
         }
 
         /// <summary>
@@ -878,7 +882,7 @@ namespace BiblePlaylist.Tests
         }
 
         /// <summary>
-        /// When a segment is edited and saved via SegmentEditor, the PUT request
+        /// When a segment is edited and saved via SelectVerses, the PUT request
         /// body sent to the server must not contain verse data. Server-side
         /// Newtonsoft [JsonIgnore] on Segment.Verses strips verse data from the
         /// persisted JSON file; the library loaded from the GET endpoint also
@@ -922,15 +926,15 @@ namespace BiblePlaylist.Tests
         }
 
         // #39 helpers: the intro text field is the editor's only <input>.
-        private void SetIntroText(IRenderedComponent<BiblePlaylist.Client.Pages.SegmentEditor> cut, string? text)
+        private void SetIntroText(IRenderedComponent<BiblePlaylist.Client.Pages.SelectVerses> cut, string? text)
         {
-            var field = typeof(BiblePlaylist.Client.Pages.SegmentEditor)
+            var field = typeof(BiblePlaylist.Client.Pages.SelectVerses)
                 .GetField("_introText", BindingFlags.NonPublic | BindingFlags.Instance);
             field?.SetValue(cut.Instance, text);
             _ = cut.InvokeAsync(() => { });
         }
 
-        private string? GetIntroFieldValue(IRenderedComponent<BiblePlaylist.Client.Pages.SegmentEditor> cut)
+        private string? GetIntroFieldValue(IRenderedComponent<BiblePlaylist.Client.Pages.SelectVerses> cut)
         {
             return cut.Find("input").GetAttribute("value");
         }
@@ -967,7 +971,7 @@ namespace BiblePlaylist.Tests
             provider.FindAll("button").First(b => b.TextContent.Contains(text)).Click();
         }
 
-        private async Task ClickChangeChapter(IRenderedComponent<BiblePlaylist.Client.Pages.SegmentEditor> cut)
+        private async Task ClickChangeChapter(IRenderedComponent<BiblePlaylist.Client.Pages.SelectVerses> cut)
         {
             await cut.InvokeAsync(() =>
             {
@@ -976,7 +980,7 @@ namespace BiblePlaylist.Tests
             cut.WaitForAssertion(() => Assert.Contains("John", cut.Markup), TimeSpan.FromSeconds(5));
         }
 
-        private async Task PickChapterInPicker(IRenderedComponent<BiblePlaylist.Client.Pages.SegmentEditor> cut, string bookName, int chapterNumber)
+        private async Task PickChapterInPicker(IRenderedComponent<BiblePlaylist.Client.Pages.SelectVerses> cut, string bookName, int chapterNumber)
         {
             await cut.InvokeAsync(() =>
             {
@@ -1165,7 +1169,7 @@ namespace BiblePlaylist.Tests
             await cut.InvokeAsync(() => Task.Delay(50));
 
             var uri = Services.GetRequiredService<NavigationManager>().Uri;
-            Assert.Contains("/edit-segment?", uri);
+            Assert.Contains("/select-verses?", uri);
             Assert.Contains("book=43", uri);
             Assert.Contains("chapter=2", uri);
             Assert.Contains("playlist=test-playlist", uri);
@@ -1211,7 +1215,7 @@ namespace BiblePlaylist.Tests
             cut.WaitForAssertion(() =>
             {
                 var uri = Services.GetRequiredService<NavigationManager>().Uri;
-                Assert.Contains("/edit-segment?", uri);
+                Assert.Contains("/select-verses?", uri);
                 Assert.Contains("book=43", uri);
                 Assert.Contains("chapter=2", uri);
                 Assert.Contains("playlist=test-playlist", uri);
@@ -1335,6 +1339,101 @@ namespace BiblePlaylist.Tests
                 Assert.Contains("book=43", uri);
                 Assert.Contains("chapter=2", uri);
                 Assert.Contains("segmentId=0", uri);
+            }, TimeSpan.FromSeconds(5));
+        }
+
+        /// <summary>
+        /// #45: saving from the editor entered in edit mode carries edit=1
+        /// through the return URL, so the playlist restores edit mode.
+        /// </summary>
+        [Fact]
+        public async Task Editor_Save_WithEditFlag_ReturnUrlCarriesEditFlag()
+        {
+            SetupVersionResponse(1, 5);
+            SetupLibraryResponse("test-playlist", 1, 5, new List<Segment>());
+
+            var cut = RenderEditor(1, 5, "test-playlist", edit: 1);
+            await cut.InvokeAsync(() => Task.Delay(50));
+
+            SetSelectedVerses(cut, new[] { 1, 2 });
+            await ClickSave(cut);
+
+            cut.WaitForAssertion(() =>
+            {
+                var uri = Services.GetRequiredService<NavigationManager>().Uri;
+                Assert.Contains("/playlists?playlist=test-playlist", uri);
+                Assert.Contains("edit=1", uri);
+            }, TimeSpan.FromSeconds(5));
+        }
+
+        /// <summary>
+        /// #45: cancelling from the editor entered in edit mode carries edit=1
+        /// through the return URL as well.
+        /// </summary>
+        [Fact]
+        public async Task Editor_Cancel_WithEditFlag_ReturnUrlCarriesEditFlag()
+        {
+            SetupVersionResponse(1, 5);
+            SetupLibraryResponse("test-playlist", 1, 5, new List<Segment>());
+
+            var cut = RenderEditor(1, 5, "test-playlist", edit: 1);
+            await cut.InvokeAsync(() => Task.Delay(50));
+
+            await cut.InvokeAsync(() =>
+            {
+                cut.FindAll("button").First(b => b.TextContent.Contains("Cancel")).Click();
+            });
+
+            var uri = Services.GetRequiredService<NavigationManager>().Uri;
+            Assert.Contains("/playlists?playlist=test-playlist", uri);
+            Assert.Contains("edit=1", uri);
+        }
+
+        /// <summary>
+        /// #45: switching chapters in the editor entered in edit mode
+        /// preserves edit=1 in the new editor URL.
+        /// </summary>
+        [Fact]
+        public async Task Editor_ChangeChapter_WithEditFlag_NewUrlPreservesEditFlag()
+        {
+            SetupVersionResponse(1, 5);
+            SetupBibleMenuResponse();
+
+            var cut = RenderEditor(1, 5, "test-playlist", edit: 1);
+            await cut.InvokeAsync(() => Task.Delay(50));
+
+            await ClickChangeChapter(cut);
+            await PickChapterInPicker(cut, "John", 2);
+            await cut.InvokeAsync(() => Task.Delay(50));
+
+            var uri = Services.GetRequiredService<NavigationManager>().Uri;
+            Assert.Contains("/select-verses?", uri);
+            Assert.Contains("book=43", uri);
+            Assert.Contains("chapter=2", uri);
+            Assert.Contains("edit=1", uri);
+        }
+
+        /// <summary>
+        /// #45: without the edit flag, the return URL does not gain one —
+        /// the flag is only carried when the editor was entered from edit mode.
+        /// </summary>
+        [Fact]
+        public async Task Editor_Save_WithoutEditFlag_ReturnUrlHasNoEditFlag()
+        {
+            SetupVersionResponse(1, 5);
+            SetupLibraryResponse("test-playlist", 1, 5, new List<Segment>());
+
+            var cut = RenderEditor(1, 5, "test-playlist");
+            await cut.InvokeAsync(() => Task.Delay(50));
+
+            SetSelectedVerses(cut, new[] { 1, 2 });
+            await ClickSave(cut);
+
+            cut.WaitForAssertion(() =>
+            {
+                var uri = Services.GetRequiredService<NavigationManager>().Uri;
+                Assert.Contains("/playlists?playlist=test-playlist", uri);
+                Assert.DoesNotContain("edit=1", uri);
             }, TimeSpan.FromSeconds(5));
         }
     }

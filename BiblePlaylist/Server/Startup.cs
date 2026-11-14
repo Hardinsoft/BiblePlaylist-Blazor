@@ -142,7 +142,14 @@ namespace BiblePlaylist.Server
                     var outBytes = Encoding.UTF8.GetBytes(html);
                     if (!context.Response.HasStarted)
                     {
-                        context.Response.ContentLength = outBytes.Length;
+                        // Clear Content-Length rather than setting it to the
+                        // new length: the replaced body is shorter than the
+                        // file, and BrowserLink may inject further content
+                        // into the page in a debug session, so no declared
+                        // length is safe — writing past it makes Kestrel
+                        // fail the first write. Kestrel falls back to
+                        // chunked transfer encoding.
+                        context.Response.ContentLength = null;
                     }
                     await originalBody.WriteAsync(outBytes);
                 });
