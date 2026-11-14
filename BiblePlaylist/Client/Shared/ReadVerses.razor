@@ -25,16 +25,41 @@
             {
                 <MudText Typo="Typo.body2">Loading playlists...</MudText>
             }
-            else if (_library.Playlists == null || _library.Playlists.Count == 0)
-            {
-                <MudText Typo="Typo.body2">No playlists found.</MudText>
-            }
             else
             {
-                <MudText Typo="Typo.body2" Class="mb-2">Choose a playlist:</MudText>
-                @foreach (var playlist in _library.Playlists)
+                @if (_library.Playlists != null && _library.Playlists.Count > 0)
                 {
-                    <MudButton Variant="Variant.Text" Color="Color.Primary" OnClick="() => AddSelectionToPlaylist(playlist)">@playlist.Name</MudButton>
+                    <MudText Typo="Typo.body2" Class="mb-2">Choose a playlist:</MudText>
+                    @foreach (var playlist in _library.Playlists)
+                    {
+                        <MudButton Variant="Variant.Text" Color="Color.Primary" OnClick="() => AddSelectionToPlaylist(playlist)">@playlist.Name</MudButton>
+                    }
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2">No playlists found.</MudText>
+                }
+                @* #46: create a playlist from the Read picker. Offered even
+                   when there are no playlists at all, so a first-time user
+                   can create one from Read. *@
+                @if (!_showNewPlaylistForm)
+                {
+                    <MudButton Variant="Variant.Text" Color="Color.Primary" OnClick="ShowNewPlaylistForm">New playlist...</MudButton>
+                }
+                else
+                {
+                    <div class="d-flex flex-column gap-2 mt-2">
+                        <MudTextField @bind-Value="_newPlaylistName" Label="Name" Variant="Variant.Outlined" Immediate="true" />
+                        <MudTextField @bind-Value="_newPlaylistDescription" Label="Description (optional)" Variant="Variant.Outlined" Immediate="true" />
+                        @if (!string.IsNullOrEmpty(_newPlaylistError))
+                        {
+                            <MudText Typo="Typo.body2" Color="Color.Error">@_newPlaylistError</MudText>
+                        }
+                        <div class="d-flex gap-2">
+                            <MudButton Variant="Variant.Text" Color="Color.Secondary" OnClick="HideNewPlaylistForm">Cancel</MudButton>
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CreatePlaylistAndOpenEditorAsync">Create</MudButton>
+                        </div>
+                    </div>
                 }
             }
         </MudPaper>
@@ -64,6 +89,14 @@
     private HashSet<int> _selectedVerseNumbers = new();
     private BiblePlaylist.Shared.Data.Library? _library;
     private bool _showPlaylistPicker;
+
+    // #46: create a playlist from the Read picker. _showNewPlaylistForm
+    // toggles the inline name/description form; the _newPlaylist* fields
+    // hold the draft and _newPlaylistError the validation message, if any.
+    private bool _showNewPlaylistForm;
+    private string? _newPlaylistName;
+    private string? _newPlaylistDescription;
+    private string? _newPlaylistError;
 
     private void ToggleVerse(int verseNumber)
     {
@@ -102,6 +135,10 @@
     {
         _selectedVerseNumbers.Clear();
         _showPlaylistPicker = false;
+        _showNewPlaylistForm = false;
+        _newPlaylistName = null;
+        _newPlaylistDescription = null;
+        _newPlaylistError = null;
         StateHasChanged();
     }
 
@@ -134,6 +171,81 @@
         var min = _selectedVerseNumbers.Min();
         var max = _selectedVerseNumbers.Max();
         var libraryCode = _library?.Code ?? "library_greg_hardin_live_com";
+        var query = $"library={System.Net.WebUtility.UrlEncode(libraryCode)}&book={SelectedBookChapter.SelectedBook}&chapter={SelectedBookChapter.SelectedChapter}&playlist={System.Net.WebUtility.UrlEncode(playlist.Key)}&selectStart={min}&selectEnd={max}";
+        NavManager.NavigateTo($"/select-verses?{query}");
+    }
+
+    // #46: show / hide the inline new-playlist form in the picker.
+    private void ShowNewPlaylistForm()
+    {
+        _showNewPlaylistForm = true;
+        _newPlaylistError = null;
+        StateHasChanged();
+    }
+
+    private void HideNewPlaylistForm()
+    {
+        _showNewPlaylistForm = false;
+        _newPlaylistName = null;
+        _newPlaylistDescription = null;
+        _newPlaylistError = null;
+        StateHasChanged();
+    }
+
+    // #46: create the playlist, save it immediately, then open the editor
+    // in Create mode with the already-selected verses pre-filled. The
+    // segment itself is created in the editor — nothing half-built is
+    // carried across pages. On a failed save the playlist is removed
+    // again and the error is shown inline; nothing navigates.
+    private async Task CreatePlaylistAndOpenEditorAsync()
+    {
+        if (SelectedBookChapter == null || _selectedVerseNumbers.Count == 0 || _library == null) return;
+
+        var name = (_newPlaylistName ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            _newPlaylistError = "Name is required.";
+            return;
+        }
+
+        if (_library.Playlists != null && _library.Playlists.Any(p => string.Equals(p.Name?.Trim(), name, StringComparison.OrdinalIgnoreCase)))
+        {
+            _newPlaylistError = $"A playlist named '{name}' already exists. Choose a different name.";
+            return;
+        }
+
+        var description = (_newPlaylistDescription ?? string.Empty).Trim();
+        var playlist = new BiblePlaylist.Shared.Playlist.Playlist
+        {
+            Name = name,
+            Description = string.IsNullOrWhiteSpace(description) ? null : description,
+            BookChapters = new List<BiblePlaylist.Shared.Playlist.BookChapter>()
+        };
+        _library.Playlists ??= new List<BiblePlaylist.Shared.Playlist.Playlist>();
+        _library.Playlists.Add(playlist);
+
+        try
+        {
+            var response = await Http.PutAsJsonAsync("library", _library);
+            if (!response.IsSuccessStatusCode)
+            {
+                logger.LogWarning("Failed to save new playlist from Read picker. Status: {StatusCode}", response.StatusCode);
+                _library.Playlists.Remove(playlist);
+                _newPlaylistError = "Could not save the new playlist. Please try again.";
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Cannot save new playlist from Read picker");
+            _library.Playlists.Remove(playlist);
+            _newPlaylistError = "Could not save the new playlist. Please try again.";
+            return;
+        }
+
+        var min = _selectedVerseNumbers.Min();
+        var max = _selectedVerseNumbers.Max();
+        var libraryCode = _library.Code ?? "library_greg_hardin_live_com";
         var query = $"library={System.Net.WebUtility.UrlEncode(libraryCode)}&book={SelectedBookChapter.SelectedBook}&chapter={SelectedBookChapter.SelectedChapter}&playlist={System.Net.WebUtility.UrlEncode(playlist.Key)}&selectStart={min}&selectEnd={max}";
         NavManager.NavigateTo($"/select-verses?{query}");
     }
@@ -212,6 +324,10 @@
             // #37: a selection belongs to the chapter it was made in.
             _selectedVerseNumbers.Clear();
             _showPlaylistPicker = false;
+            _showNewPlaylistForm = false;
+            _newPlaylistName = null;
+            _newPlaylistDescription = null;
+            _newPlaylistError = null;
             var lastReadResponse = await Http.GetAsync($"Version?key={BiblePlaylist.Shared.Structs.Version.NET}&Book={selectedBookChapter.SelectedBook.ToString()}&Chapter={selectedBookChapter.SelectedChapter.ToString()}");
 
             BiblePlaylist.Shared.Bible.Version? lastRead = null;
