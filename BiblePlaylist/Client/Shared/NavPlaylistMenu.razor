@@ -279,6 +279,22 @@
                 }           
             }
         </MudList>
+        @* #46: add a playlist — inline form at the bottom of the playlist
+           section, below the list and its chapters. Name is required,
+           description is optional; both are trimmed on save, not on
+           input. Visible in listen and edit mode. The form sits outside
+           the MudList (not inside a MudListItem), so the list item's key
+           interceptor cannot swallow the Space key here. *@
+        <MudPaper Class="pa-3 mt-2" Outlined="true">
+            <MudText Typo="Typo.subtitle1" Class="mb-2">Add a playlist</MudText>
+            <MudTextField @bind-Value="_newPlaylistName" Label="Name" Variant="Variant.Outlined" Immediate="true" Class="mb-2" />
+            <MudTextField @bind-Value="_newPlaylistDescription" Label="Description (optional)" Variant="Variant.Outlined" Immediate="true" Class="mb-2" />
+            @if (!string.IsNullOrEmpty(_newPlaylistError))
+            {
+                <MudText Typo="Typo.body2" Color="Color.Error" Class="mb-2">@_newPlaylistError</MudText>
+            }
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="AddPlaylistAsync">Add</MudButton>
+        </MudPaper>
     </MudItem>
 
 
@@ -381,6 +397,12 @@
     private string? _editName;
     private string? _editDescription;
     private string? _editError;
+    // #46: inline add-playlist form at the bottom of the playlist list.
+    // _newPlaylistName/_newPlaylistDescription hold the draft;
+    // _newPlaylistError is the inline validation message, if any.
+    private string? _newPlaylistName;
+    private string? _newPlaylistDescription;
+    private string? _newPlaylistError;
     // #30: index in _playlistSegments of the segment returned to from the
     // segment editor, waiting for the user's first Play / forward /
     // double-click. It is NOT the current segment: the return state stays
@@ -1163,6 +1185,55 @@
         _editingPlaylist = null;
         _editError = null;
         await SaveLibraryAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    // #46: create a playlist from the inline form at the bottom of the
+    // playlist list. Validates (required, unique case-insensitive), saves,
+    // selects the new playlist, and enters edit mode so its empty state
+    // shows with Add Chapter ready. The form clears on success.
+    private async Task AddPlaylistAsync()
+    {
+        if (Library?.Playlists == null) return;
+
+        var name = (_newPlaylistName ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            _newPlaylistError = "Name is required.";
+            return;
+        }
+
+        if (Library.Playlists.Any(p => string.Equals(p.Name?.Trim(), name, StringComparison.OrdinalIgnoreCase)))
+        {
+            _newPlaylistError = $"A playlist named '{name}' already exists. Choose a different name.";
+            return;
+        }
+
+        var description = (_newPlaylistDescription ?? string.Empty).Trim();
+        var playlist = new Playlist
+        {
+            Name = name,
+            Description = string.IsNullOrWhiteSpace(description) ? null : description,
+            BookChapters = new List<BookChapter>()
+        };
+        Library.Playlists.Add(playlist);
+        _newPlaylistName = null;
+        _newPlaylistDescription = null;
+        _newPlaylistError = null;
+        await SaveLibraryAsync();
+
+        // Select the new playlist (a fresh, empty one has no chapters to
+        // inflate and nothing to play, so set the selection directly
+        // instead of the toggling SelectPlaylist).
+        await CancelPlaybackAsync();
+        _isEditMode = true;
+        _expandedChapter = null;
+        _returnTargetSegment = null;
+        _pendingSegmentIndex = -1;
+        selectedPlaylist = playlist;
+        RebuildPlaylistSegments();
+        _currentSegmentIndex = -1;
+        hideChapters = false;
         await InvokeAsync(StateHasChanged);
     }
 

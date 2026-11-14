@@ -1333,5 +1333,120 @@ namespace BiblePlaylist.Tests
             Assert.False(GetBool(cut, "_isEditMode"));
             Assert.False(HasEditControls(cut));
         }
+
+        // #46: the inline add-playlist form at the bottom of the playlist
+        // list — the MudPaper holding the "Add a playlist" heading.
+        private static AngleSharp.Dom.IElement AddPlaylistForm(
+            IRenderedComponent<BiblePlaylist.Client.Shared.NavPlaylistMenu> cut)
+        {
+            return cut.FindAll(".mud-paper").First(p => p.TextContent.Contains("Add a playlist"));
+        }
+
+        private static void SetAddPlaylistFields(
+            IRenderedComponent<BiblePlaylist.Client.Shared.NavPlaylistMenu> cut, string name, string? description)
+        {
+            var inputs = AddPlaylistForm(cut).QuerySelectorAll("input");
+            inputs[0].Input(name);
+            if (description != null)
+                inputs[1].Input(description);
+        }
+
+        private static void ClickAddPlaylist(
+            IRenderedComponent<BiblePlaylist.Client.Shared.NavPlaylistMenu> cut)
+        {
+            AddPlaylistForm(cut).QuerySelectorAll("button")
+                .First(b => b.TextContent.Trim() == "Add").Click();
+        }
+
+        /// <summary>
+        /// #46: filling the inline form and tapping Add creates the playlist
+        /// (Key auto-generated, no chapters yet), PUTs the library, selects
+        /// the new playlist in edit mode so its empty state shows with Add
+        /// Chapter ready, and clears the form.
+        /// </summary>
+        [Fact]
+        public async Task AddPlaylist_Save_CreatesSelectsAndClearsForm()
+        {
+            var cut = RenderMenu(new List<BookChapter> { JohnSingleSegmentChapter() }, 43, 1);
+
+            SetAddPlaylistFields(cut, "Romans Road", "A gospel presentation");
+            ClickAddPlaylist(cut);
+
+            cut.WaitForAssertion(() => Assert.Contains(HttpHandler.Requests, req => req.Method == HttpMethod.Put), TimeSpan.FromSeconds(5));
+            var saved = await GetSavedLibrary();
+            Assert.NotNull(saved);
+            Assert.Equal(2, saved!.Playlists.Count);
+            var added = saved.Playlists.Single(p => p.Name == "Romans Road");
+            Assert.False(string.IsNullOrWhiteSpace(added.Key));
+            Assert.NotEqual("test-key", added.Key);
+            Assert.Equal("A gospel presentation", added.Description);
+            Assert.NotNull(added.BookChapters);
+            Assert.Empty(added.BookChapters);
+
+            var selected = GetSelectedPlaylist(cut);
+            Assert.NotNull(selected);
+            Assert.Equal("Romans Road", selected!.Name);
+            Assert.True(GetBool(cut, "_isEditMode"));
+            Assert.True(HasEditControls(cut));
+            Assert.Contains("No chapters loaded yet.", cut.Markup);
+            Assert.NotNull(cut.Find("#Romans_Road"));
+
+            // The form clears, ready for the next add.
+            var inputs = AddPlaylistForm(cut).QuerySelectorAll("input");
+            Assert.True(string.IsNullOrEmpty(inputs[0].GetAttribute("value")));
+            Assert.True(string.IsNullOrEmpty(inputs[1].GetAttribute("value")));
+        }
+
+        /// <summary>
+        /// #46: an empty name is rejected inline with a clear message and
+        /// nothing is saved; the form stays open so the user can fix it.
+        /// </summary>
+        [Fact]
+        public void AddPlaylist_EmptyName_Rejected()
+        {
+            var cut = RenderMenu(new List<BookChapter> { JohnSingleSegmentChapter() }, 43, 1);
+
+            ClickAddPlaylist(cut);
+
+            Assert.Contains("Name is required.", cut.Markup);
+            Assert.DoesNotContain(HttpHandler.Requests, req => req.Method == HttpMethod.Put);
+            Assert.Equal("Test Playlist", GetSelectedPlaylist(cut)!.Name);
+        }
+
+        /// <summary>
+        /// #46: a duplicate name (case-insensitive) is rejected inline with
+        /// a clear message and nothing is saved.
+        /// </summary>
+        [Fact]
+        public void AddPlaylist_DuplicateName_Rejected()
+        {
+            var cut = RenderMenuWithPlaylists(TwoPlaylists(), "test-key", 43, 1);
+
+            SetAddPlaylistFields(cut, "second playlist", null);
+            ClickAddPlaylist(cut);
+
+            Assert.Contains("A playlist named 'second playlist' already exists.", cut.Markup);
+            Assert.DoesNotContain(HttpHandler.Requests, req => req.Method == HttpMethod.Put);
+        }
+
+        /// <summary>
+        /// #46: the description is optional — a playlist saved without one
+        /// has a null description and can be given one later via Edit (#45).
+        /// </summary>
+        [Fact]
+        public async Task AddPlaylist_DescriptionOptional()
+        {
+            var cut = RenderMenu(new List<BookChapter> { JohnSingleSegmentChapter() }, 43, 1);
+
+            SetAddPlaylistFields(cut, "Romans Road", null);
+            ClickAddPlaylist(cut);
+
+            cut.WaitForAssertion(() => Assert.Contains(HttpHandler.Requests, req => req.Method == HttpMethod.Put), TimeSpan.FromSeconds(5));
+            var saved = await GetSavedLibrary();
+            Assert.NotNull(saved);
+            var added = saved!.Playlists.Single(p => p.Name == "Romans Road");
+            Assert.Null(added.Description);
+            Assert.Equal("Romans Road", GetSelectedPlaylist(cut)!.Name);
+        }
     }
 }
