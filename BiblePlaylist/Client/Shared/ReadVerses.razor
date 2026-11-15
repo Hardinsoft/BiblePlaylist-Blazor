@@ -10,9 +10,13 @@
 @inject NavigationManager NavManager
 
 
-@* #37: verse selection + add to playlist. *@
+@* #37: verse selection + add to playlist.
+   #46 (review): the selection bar + picker stick to the bottom of the
+   player bar (see .stickySelectionBar in app.css) so the Add to playlist
+   button stays visible when the selected verse is scrolled near the fold. *@
 @if (_selectedVerseNumbers.Count > 0 && SelectedBookChapter != null)
 {
+    <div class="stickySelectionBar">
     <MudPaper Class="pa-2 mb-3 d-flex align-center gap-2 flex-wrap">
         <MudText Typo="Typo.body1" Class="flex-grow-1">Selected: @ShowSelectionRange()</MudText>
         <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="TogglePlaylistPicker">Add to playlist</MudButton>
@@ -64,6 +68,7 @@
             }
         </MudPaper>
     }
+    </div>
 }
 
 <div class="row">

@@ -57,6 +57,11 @@
             {            
                 foreach (var p in Library.Playlists)
                 {
+                    @* #46 (review): when a playlist is open, hide the other
+                       playlist rows — only the open playlist shows. Toggling
+                       the open playlist closed shows the list again. *@
+                    @if (hideChapters || selectedPlaylist?.Key == p.Key)
+                    {
                     @if (_editingPlaylist?.Key == p.Key)
                     {
                         @* #45 (review): inline title edit — no modal (modals are
@@ -276,25 +281,36 @@
                             </MudGrid>
                         </MudItem>
                     }
+                    }
                 }           
             }
         </MudList>
-        @* #46: add a playlist — inline form at the bottom of the playlist
-           section, below the list and its chapters. Name is required,
+        @* #46: add a playlist — the form stays hidden until the Add playlist
+           button is tapped (review 2026-11-14). Name is required,
            description is optional; both are trimmed on save, not on
            input. Visible in listen and edit mode. The form sits outside
            the MudList (not inside a MudListItem), so the list item's key
            interceptor cannot swallow the Space key here. *@
-        <MudPaper Class="pa-3 mt-2" Outlined="true">
-            <MudText Typo="Typo.subtitle1" Class="mb-2">Add a playlist</MudText>
-            <MudTextField @bind-Value="_newPlaylistName" Label="Name" Variant="Variant.Outlined" Immediate="true" Class="mb-2" />
-            <MudTextField @bind-Value="_newPlaylistDescription" Label="Description (optional)" Variant="Variant.Outlined" Immediate="true" Class="mb-2" />
-            @if (!string.IsNullOrEmpty(_newPlaylistError))
-            {
-                <MudText Typo="Typo.body2" Color="Color.Error" Class="mb-2">@_newPlaylistError</MudText>
-            }
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="AddPlaylistAsync">Add</MudButton>
-        </MudPaper>
+        @if (_showAddPlaylistForm)
+        {
+            <MudPaper Class="pa-3 mt-2" Outlined="true">
+                <MudText Typo="Typo.subtitle1" Class="mb-2">Add a playlist</MudText>
+                <MudTextField @bind-Value="_newPlaylistName" Label="Name" Variant="Variant.Outlined" Immediate="true" Class="mb-2" />
+                <MudTextField @bind-Value="_newPlaylistDescription" Label="Description (optional)" Variant="Variant.Outlined" Immediate="true" Class="mb-2" />
+                @if (!string.IsNullOrEmpty(_newPlaylistError))
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Error" Class="mb-2">@_newPlaylistError</MudText>
+                }
+                <div class="d-flex gap-2">
+                    <MudButton Color="Color.Secondary" OnClick="HideAddPlaylistForm">Cancel</MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="AddPlaylistAsync">Add</MudButton>
+                </div>
+            </MudPaper>
+        }
+        else
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="ShowAddPlaylistForm" Class="mt-2">Add playlist</MudButton>
+        }
     </MudItem>
 
 
@@ -400,6 +416,9 @@
     // #46: inline add-playlist form at the bottom of the playlist list.
     // _newPlaylistName/_newPlaylistDescription hold the draft;
     // _newPlaylistError is the inline validation message, if any.
+    // _showAddPlaylistForm toggles the form (review 2026-11-14: the form
+    // stays hidden until the Add playlist button is tapped).
+    private bool _showAddPlaylistForm;
     private string? _newPlaylistName;
     private string? _newPlaylistDescription;
     private string? _newPlaylistError;
@@ -830,7 +849,12 @@
             SelectedChapter = chapter.ChapterNumber
         };
 
-        chapterText = $"{chapter.BookName} {chapter.ChapterNumber}:{segment.VerseStart}-{segment.VerseEnd}";
+        // A single-verse segment shows just the verse (Romans 3:10), not a
+        // hyphenated range (Romans 3:10-10) — same rule as
+        // BookChapter.BuildDisplayReference.
+        chapterText = segment.VerseStart == segment.VerseEnd
+            ? $"{chapter.BookName} {chapter.ChapterNumber}:{segment.VerseStart}"
+            : $"{chapter.BookName} {chapter.ChapterNumber}:{segment.VerseStart}-{segment.VerseEnd}";
 
         // Force the UI (header text) to update right now, before TTS starts
         await InvokeAsync(() =>
@@ -1188,10 +1212,28 @@
         await InvokeAsync(StateHasChanged);
     }
 
+    // #46 (review): show / hide the inline add-playlist form. Hiding
+    // discards the draft so a fresh form opens next time.
+    private void ShowAddPlaylistForm()
+    {
+        _showAddPlaylistForm = true;
+        _newPlaylistError = null;
+        StateHasChanged();
+    }
+
+    private void HideAddPlaylistForm()
+    {
+        _showAddPlaylistForm = false;
+        _newPlaylistName = null;
+        _newPlaylistDescription = null;
+        _newPlaylistError = null;
+        StateHasChanged();
+    }
+
     // #46: create a playlist from the inline form at the bottom of the
     // playlist list. Validates (required, unique case-insensitive), saves,
     // selects the new playlist, and enters edit mode so its empty state
-    // shows with Add Chapter ready. The form clears on success.
+    // shows with Add Chapter ready. The form clears and hides on success.
     private async Task AddPlaylistAsync()
     {
         if (Library?.Playlists == null) return;
@@ -1220,6 +1262,7 @@
         _newPlaylistName = null;
         _newPlaylistDescription = null;
         _newPlaylistError = null;
+        _showAddPlaylistForm = false;
         await SaveLibraryAsync();
 
         // Select the new playlist (a fresh, empty one has no chapters to
@@ -1336,7 +1379,7 @@
 
         await SaveLibraryAsync();
 
-        Snackbar.Add($"Segment '{segment.VerseStart}-{segment.VerseEnd}' deleted.", Severity.Info);
+        Snackbar.Add($"Segment '{(segment.VerseStart == segment.VerseEnd ? segment.VerseStart.ToString() : $"{segment.VerseStart}-{segment.VerseEnd}")}' deleted.", Severity.Info);
 
         await RefreshDropContainerAsync();
     }

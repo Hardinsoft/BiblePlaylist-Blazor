@@ -358,5 +358,22 @@ namespace BiblePlaylist.Tests
             Assert.DoesNotContain(HttpHandler.Requests, req => req.Method == HttpMethod.Put);
             Assert.DoesNotContain("/select-verses", Services.GetRequiredService<NavigationManager>().Uri);
         }
+
+        /// <summary>
+        /// #46 (review): the verse-selection bar + playlist picker sit in
+        /// a sticky container pinned to the bottom of the player, so the
+        /// Add to playlist button stays visible when the selected verse is
+        /// scrolled near the fold.
+        /// </summary>
+        [Fact]
+        public void ReadVerse_SelectionBar_IsStickyBelowPlayer()
+        {
+            var cut = RenderWithPickerOpen();
+
+            var sticky = cut.Find(".stickySelectionBar");
+            Assert.NotNull(sticky);
+            Assert.Contains("Add to playlist", sticky.TextContent);
+            Assert.Contains("New playlist", sticky.TextContent);
+        }
     }
 }

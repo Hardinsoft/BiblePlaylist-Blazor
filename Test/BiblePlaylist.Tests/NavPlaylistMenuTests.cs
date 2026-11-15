@@ -108,6 +108,16 @@ namespace BiblePlaylist.Tests
             Segments = new List<Segment> { PlainSegment(1, 1, 2) }
         };
 
+        // #46 (review): a chapter with a single-verse segment (Romans 3:10).
+        private static BookChapter RomansSingleVerseChapter() => new BookChapter
+        {
+            BookNumber = 45,
+            ChapterNumber = 3,
+            BookName = "Romans",
+            ChapterAudioUrl = "45-Romans-03.mp3",
+            Segments = new List<Segment> { PlainSegment(1, 10, 10) }
+        };
+
         private static BookChapter JohnEmptyChapter() => new BookChapter
         {
             BookNumber = 43,
@@ -151,7 +161,7 @@ namespace BiblePlaylist.Tests
         /// Waits until inflate has completed (verse rows only render then).
         /// </summary>
         private IRenderedComponent<BiblePlaylist.Client.Shared.NavPlaylistMenu> RenderMenu(
-            List<BookChapter> chapters, int book, int chapter, int segmentId = 0, string? description = "Test playlist", bool edit = false)
+            List<BookChapter> chapters, int book, int chapter, int segmentId = 0, string? description = "Test playlist", bool edit = false, string waitVerseId = "#verse-1-1-1")
         {
             var playlist = new Playlist
             {
@@ -160,7 +170,7 @@ namespace BiblePlaylist.Tests
                 Description = description,
                 BookChapters = chapters
             };
-            return RenderMenuWithPlaylists(new List<Playlist> { playlist }, "test-key", book, chapter, segmentId, edit);
+            return RenderMenuWithPlaylists(new List<Playlist> { playlist }, "test-key", book, chapter, segmentId, edit, waitVerseId);
         }
 
         /// <summary>
@@ -172,7 +182,7 @@ namespace BiblePlaylist.Tests
         /// playlist's first chapter has a verse-1 segment.
         /// </summary>
         private IRenderedComponent<BiblePlaylist.Client.Shared.NavPlaylistMenu> RenderMenuWithPlaylists(
-            List<Playlist> playlists, string selectedKey, int book, int chapter, int segmentId = 0, bool edit = false)
+            List<Playlist> playlists, string selectedKey, int book, int chapter, int segmentId = 0, bool edit = false, string waitVerseId = "#verse-1-1-1")
         {
             var library = new Library
             {
@@ -192,7 +202,7 @@ namespace BiblePlaylist.Tests
             Services.GetRequiredService<NavigationManager>().NavigateTo(url);
 
             var cut = RenderComponent<BiblePlaylist.Client.Shared.NavPlaylistMenu>();
-            cut.WaitForAssertion(() => Assert.NotNull(cut.Find("#verse-1-1-1")),
+            cut.WaitForAssertion(() => Assert.NotNull(cut.Find(waitVerseId)),
                 TimeSpan.FromSeconds(5));
             return cut;
         }
@@ -1304,6 +1314,11 @@ namespace BiblePlaylist.Tests
             await ToggleEditMode(cut);
             cut.WaitForAssertion(() => Assert.True(HasEditControls(cut)), TimeSpan.FromSeconds(5));
 
+            // #46 (review): while a playlist is open the other rows are
+            // hidden, so switching means toggling the open playlist closed
+            // first (the list shows again), then tapping the other one.
+            cut.Find("#Test_Playlist").Click();
+            cut.WaitForAssertion(() => cut.Find("#Second_Playlist"), TimeSpan.FromSeconds(5));
             cut.Find("#Second_Playlist").Click();
             cut.WaitForAssertion(() => Assert.False(GetBool(cut, "_isEditMode")), TimeSpan.FromSeconds(5));
             Assert.False(HasEditControls(cut));
@@ -1335,10 +1350,17 @@ namespace BiblePlaylist.Tests
         }
 
         // #46: the inline add-playlist form at the bottom of the playlist
-        // list — the MudPaper holding the "Add a playlist" heading.
+        // list — the MudPaper holding the "Add a playlist" heading. The
+        // form is hidden until the Add playlist button is tapped (review
+        // 2026-11-14), so reveal it first when a test needs it.
         private static AngleSharp.Dom.IElement AddPlaylistForm(
             IRenderedComponent<BiblePlaylist.Client.Shared.NavPlaylistMenu> cut)
         {
+            if (!cut.FindAll(".mud-paper").Any(p => p.TextContent.Contains("Add a playlist")))
+            {
+                cut.FindAll("button").First(b => b.TextContent.Trim() == "Add playlist").Click();
+            }
+
             return cut.FindAll(".mud-paper").First(p => p.TextContent.Contains("Add a playlist"));
         }
 
@@ -1447,6 +1469,89 @@ namespace BiblePlaylist.Tests
             var added = saved!.Playlists.Single(p => p.Name == "Romans Road");
             Assert.Null(added.Description);
             Assert.Equal("Romans Road", GetSelectedPlaylist(cut)!.Name);
+        }
+
+        /// <summary>
+        /// #46 (review): the add-playlist form is hidden until the Add
+        /// playlist button is tapped; Cancel hides it again.
+        /// </summary>
+        [Fact]
+        public void AddPlaylist_FormHiddenUntilButtonClicked()
+        {
+            var cut = RenderMenu(new List<BookChapter> { JohnSingleSegmentChapter() }, 43, 1);
+
+            Assert.DoesNotContain(cut.FindAll(".mud-paper"), p => p.TextContent.Contains("Add a playlist"));
+            var reveal = cut.FindAll("button").First(b => b.TextContent.Trim() == "Add playlist");
+            reveal.Click();
+
+            cut.WaitForAssertion(() => Assert.Contains(cut.FindAll(".mud-paper"), p => p.TextContent.Contains("Add a playlist")), TimeSpan.FromSeconds(5));
+
+            AddPlaylistForm(cut).QuerySelectorAll("button").First(b => b.TextContent.Trim() == "Cancel").Click();
+            cut.WaitForAssertion(() => Assert.DoesNotContain(cut.FindAll(".mud-paper"), p => p.TextContent.Contains("Add a playlist")), TimeSpan.FromSeconds(5));
+            Assert.Contains(cut.FindAll("button"), b => b.TextContent.Trim() == "Add playlist");
+        }
+
+        /// <summary>
+        /// #46 (review): a successful add hides the form again (and the
+        /// Add playlist button returns).
+        /// </summary>
+        [Fact]
+        public async Task AddPlaylist_AddHidesFormAfterSuccess()
+        {
+            var cut = RenderMenu(new List<BookChapter> { JohnSingleSegmentChapter() }, 43, 1);
+
+            SetAddPlaylistFields(cut, "Romans Road", "Road to Salvation through Christ");
+            ClickAddPlaylist(cut);
+
+            cut.WaitForAssertion(() => Assert.Contains(HttpHandler.Requests, req => req.Method == HttpMethod.Put), TimeSpan.FromSeconds(5));
+            cut.WaitForAssertion(() => Assert.DoesNotContain(cut.FindAll(".mud-paper"), p => p.TextContent.Contains("Add a playlist")), TimeSpan.FromSeconds(5));
+            Assert.Contains(cut.FindAll("button"), b => b.TextContent.Trim() == "Add playlist");
+        }
+
+        /// <summary>
+        /// #46 (review): when a playlist is open the other playlist rows
+        /// are hidden; toggling the open playlist closed shows the list.
+        /// </summary>
+        [Fact]
+        public async Task PlaylistList_HiddenWhenPlaylistOpen_ToggleShowsList()
+        {
+            var playlists = new List<Playlist>
+            {
+                new Playlist { Key = "test-key", Name = "Test Playlist", Description = "Test playlist", BookChapters = new List<BookChapter> { ChapterWithSegments(inflated: false) } },
+                new Playlist { Key = "second-key", Name = "Second Playlist", Description = "Second", BookChapters = new List<BookChapter> { ChapterWithSegments(inflated: false) } }
+            };
+            var cut = RenderMenuWithPlaylists(playlists, "test-key", 43, 1, segmentId: 2);
+
+            // Test Playlist is open; the other row is hidden.
+            cut.WaitForAssertion(() => cut.Find("#Test_Playlist"), TimeSpan.FromSeconds(5));
+            Assert.Empty(cut.FindAll("#Second_Playlist"));
+
+            // Toggling the open playlist closed shows the list again.
+            cut.Find("#Test_Playlist").Click();
+            cut.WaitForAssertion(() => cut.Find("#Second_Playlist"), TimeSpan.FromSeconds(5));
+            cut.Find("#Test_Playlist");
+        }
+
+        /// <summary>
+        /// #46 (review): a chapter with a single verse shows the verse
+        /// without a hyphen in the player (Romans 3:10, not Romans 3:10-10).
+        /// </summary>
+        [Fact]
+        public void PlayerText_SingleVerseSegment_ShowsVerseWithoutHyphen()
+        {
+            var cut = RenderMenu(new List<BookChapter> { RomansSingleVerseChapter() },
+                book: 45, chapter: 3, segmentId: 1, waitVerseId: "#verse-3-10-10");
+            try
+            {
+                cut.Find("[aria-label='Play audio']").Click();
+                cut.WaitForAssertion(() => Assert.Equal(0, GetInt(cut, "_currentSegmentIndex")),
+                    TimeSpan.FromSeconds(5));
+
+                var playerBar = cut.Find(".stick-to-menu-bottom");
+                Assert.Contains("Romans 3:10", playerBar.TextContent);
+                Assert.DoesNotContain("Romans 3:10-10", playerBar.TextContent);
+            }
+            finally { StopTimer(cut); }
         }
     }
 }
