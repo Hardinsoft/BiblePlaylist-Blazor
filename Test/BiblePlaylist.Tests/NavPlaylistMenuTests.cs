@@ -1352,7 +1352,8 @@ namespace BiblePlaylist.Tests
         // #46: the inline add-playlist form at the bottom of the playlist
         // list — the MudPaper holding the "Add a playlist" heading. The
         // form is hidden until the Add playlist button is tapped (review
-        // 2026-11-14), so reveal it first when a test needs it.
+        // 2026-11-14), so reveal it first when a test needs it. Callers
+        // render in the listview (RenderListView), where the button lives.
         private static AngleSharp.Dom.IElement AddPlaylistForm(
             IRenderedComponent<BiblePlaylist.Client.Shared.NavPlaylistMenu> cut)
         {
@@ -1362,6 +1363,46 @@ namespace BiblePlaylist.Tests
             }
 
             return cut.FindAll(".mud-paper").First(p => p.TextContent.Contains("Add a playlist"));
+        }
+
+        /// <summary>
+        /// #46 (review): renders the playlist page in the listview (no
+        /// playlist open, no return navigation) — the only place the Add
+        /// playlist button shows. Mirrors RenderMenu's single-playlist
+        /// setup but navigates to the bare /playlists URL.
+        /// </summary>
+        private IRenderedComponent<BiblePlaylist.Client.Shared.NavPlaylistMenu> RenderListView(
+            List<BookChapter> chapters)
+        {
+            return RenderListView(new List<Playlist>
+            {
+                new Playlist
+                {
+                    Key = "test-key",
+                    Name = "Test Playlist",
+                    Description = "Test playlist",
+                    BookChapters = chapters
+                }
+            });
+        }
+
+        private IRenderedComponent<BiblePlaylist.Client.Shared.NavPlaylistMenu> RenderListView(
+            List<Playlist> playlists)
+        {
+            var library = new Library
+            {
+                Code = "library_greg_hardin_live_com",
+                Playlists = playlists
+            };
+            HttpHandler.SetupGet("library?key=library_greg_hardin_live_com", JsonConvert.SerializeObject(library));
+            HttpHandler.SetupPut("library");
+
+            Services.GetRequiredService<NavigationManager>().NavigateTo("http://localhost/playlists");
+
+            var cut = RenderComponent<BiblePlaylist.Client.Shared.NavPlaylistMenu>();
+            cut.WaitForAssertion(() => Assert.NotNull(cut.Find("#Test_Playlist")),
+                TimeSpan.FromSeconds(5));
+            return cut;
         }
 
         private static void SetAddPlaylistFields(
@@ -1389,7 +1430,7 @@ namespace BiblePlaylist.Tests
         [Fact]
         public async Task AddPlaylist_Save_CreatesSelectsAndClearsForm()
         {
-            var cut = RenderMenu(new List<BookChapter> { JohnSingleSegmentChapter() }, 43, 1);
+            var cut = RenderListView(new List<BookChapter> { JohnSingleSegmentChapter() });
 
             SetAddPlaylistFields(cut, "Romans Road", "A gospel presentation");
             ClickAddPlaylist(cut);
@@ -1413,7 +1454,10 @@ namespace BiblePlaylist.Tests
             Assert.Contains("No chapters loaded yet.", cut.Markup);
             Assert.NotNull(cut.Find("#Romans_Road"));
 
-            // The form clears, ready for the next add.
+            // The form clears, ready for the next add — close the new
+            // playlist to return to the listview, then reopen the form.
+            cut.Find("#Romans_Road").Click();
+            cut.WaitForAssertion(() => Assert.Contains(cut.FindAll("button"), b => b.TextContent.Trim() == "Add playlist"), TimeSpan.FromSeconds(5));
             var inputs = AddPlaylistForm(cut).QuerySelectorAll("input");
             Assert.True(string.IsNullOrEmpty(inputs[0].GetAttribute("value")));
             Assert.True(string.IsNullOrEmpty(inputs[1].GetAttribute("value")));
@@ -1426,13 +1470,14 @@ namespace BiblePlaylist.Tests
         [Fact]
         public void AddPlaylist_EmptyName_Rejected()
         {
-            var cut = RenderMenu(new List<BookChapter> { JohnSingleSegmentChapter() }, 43, 1);
+            var cut = RenderListView(new List<BookChapter> { JohnSingleSegmentChapter() });
 
             ClickAddPlaylist(cut);
 
             Assert.Contains("Name is required.", cut.Markup);
             Assert.DoesNotContain(HttpHandler.Requests, req => req.Method == HttpMethod.Put);
-            Assert.Equal("Test Playlist", GetSelectedPlaylist(cut)!.Name);
+            // Still in the listview: no playlist was selected by the failed add.
+            Assert.Null(GetSelectedPlaylist(cut));
         }
 
         /// <summary>
@@ -1442,7 +1487,7 @@ namespace BiblePlaylist.Tests
         [Fact]
         public void AddPlaylist_DuplicateName_Rejected()
         {
-            var cut = RenderMenuWithPlaylists(TwoPlaylists(), "test-key", 43, 1);
+            var cut = RenderListView(TwoPlaylists());
 
             SetAddPlaylistFields(cut, "second playlist", null);
             ClickAddPlaylist(cut);
@@ -1458,7 +1503,7 @@ namespace BiblePlaylist.Tests
         [Fact]
         public async Task AddPlaylist_DescriptionOptional()
         {
-            var cut = RenderMenu(new List<BookChapter> { JohnSingleSegmentChapter() }, 43, 1);
+            var cut = RenderListView(new List<BookChapter> { JohnSingleSegmentChapter() });
 
             SetAddPlaylistFields(cut, "Romans Road", null);
             ClickAddPlaylist(cut);
@@ -1472,13 +1517,28 @@ namespace BiblePlaylist.Tests
         }
 
         /// <summary>
+        /// #46 (review): the add-playlist button only shows in the
+        /// listview — not while a playlist is open in read or edit mode.
+        /// </summary>
+        [Fact]
+        public void AddPlaylist_ButtonHiddenWhenPlaylistOpen()
+        {
+            var cut = RenderMenu(new List<BookChapter> { JohnSingleSegmentChapter() }, 43, 1);
+
+            // A playlist is open (read mode): no Add playlist button.
+            Assert.DoesNotContain(cut.FindAll("button"), b => b.TextContent.Trim() == "Add playlist");
+            Assert.DoesNotContain(cut.FindAll(".mud-paper"), p => p.TextContent.Contains("Add a playlist"));
+        }
+
+        /// <summary>
         /// #46 (review): the add-playlist form is hidden until the Add
-        /// playlist button is tapped; Cancel hides it again.
+        /// playlist button is tapped; Cancel hides it again. Rendered in
+        /// the listview, where the button lives.
         /// </summary>
         [Fact]
         public void AddPlaylist_FormHiddenUntilButtonClicked()
         {
-            var cut = RenderMenu(new List<BookChapter> { JohnSingleSegmentChapter() }, 43, 1);
+            var cut = RenderListView(new List<BookChapter> { JohnSingleSegmentChapter() });
 
             Assert.DoesNotContain(cut.FindAll(".mud-paper"), p => p.TextContent.Contains("Add a playlist"));
             var reveal = cut.FindAll("button").First(b => b.TextContent.Trim() == "Add playlist");
@@ -1498,14 +1558,15 @@ namespace BiblePlaylist.Tests
         [Fact]
         public async Task AddPlaylist_AddHidesFormAfterSuccess()
         {
-            var cut = RenderMenu(new List<BookChapter> { JohnSingleSegmentChapter() }, 43, 1);
+            var cut = RenderListView(new List<BookChapter> { JohnSingleSegmentChapter() });
 
             SetAddPlaylistFields(cut, "Romans Road", "Road to Salvation through Christ");
             ClickAddPlaylist(cut);
 
             cut.WaitForAssertion(() => Assert.Contains(HttpHandler.Requests, req => req.Method == HttpMethod.Put), TimeSpan.FromSeconds(5));
             cut.WaitForAssertion(() => Assert.DoesNotContain(cut.FindAll(".mud-paper"), p => p.TextContent.Contains("Add a playlist")), TimeSpan.FromSeconds(5));
-            Assert.Contains(cut.FindAll("button"), b => b.TextContent.Trim() == "Add playlist");
+            // The new playlist is open, so the Add playlist button is hidden too (listview only).
+            Assert.DoesNotContain(cut.FindAll("button"), b => b.TextContent.Trim() == "Add playlist");
         }
 
         /// <summary>
