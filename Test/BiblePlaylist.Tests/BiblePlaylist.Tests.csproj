@@ -26,4 +26,10 @@
     <ProjectReference Include="..\..\BiblePlaylist\Shared\BiblePlaylist.Shared.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="..\..\BiblePlaylist\Server\Storage\NET.json" Link="NET.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>
