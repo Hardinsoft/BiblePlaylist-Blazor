@@ -23,6 +23,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\BiblePlaylist\Client\BiblePlaylist.Client.csproj" />
+    <ProjectReference Include="..\..\BiblePlaylist\Server\BiblePlaylist.Server.csproj" />
     <ProjectReference Include="..\..\BiblePlaylist\Shared\BiblePlaylist.Shared.csproj" />
   </ItemGroup>
 

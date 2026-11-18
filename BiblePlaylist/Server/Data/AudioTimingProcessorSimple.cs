@@ -41,145 +41,65 @@ public class AudioTimingProcessorSimple : IAudioTimingProcessor
                                 System.Globalization.CultureInfo.InvariantCulture, out _);
     }
 
-    // Find potential start indices based on the marker sequence
-    private List<int> FindPotentialStarts(string[] transWords, int startFrom, string[] marker)
+    /// <summary>
+    /// Aligns one verse's NET words against a window of the transcript with a
+    /// longest-common-subsequence (LCS) alignment, and returns the aligned
+    /// pairs as (transcript token index, verse token index), in order, plus
+    /// the fraction of the verse's words that matched. The caller searches
+    /// forward from the previous verse's end, so a repeated phrase resolves
+    /// to its next occurrence and a transcript word cannot be stolen by a
+    /// later verse. A low ratio means the verse's words are not in the
+    /// window (e.g. a verse missing from the transcription).
+    /// </summary>
+    private (List<(int TransIdx, int VerseIdx)> Pairs, double Ratio) AlignVerse(
+        string[] transTokens, int windowStart, int windowEnd, string[] verseTokens)
     {
-        List<int> starts = new List<int>();
-        int markerLen = marker.Length;
-        for (int i = startFrom; i <= transWords.Length - markerLen; i++)
+        var pairs = new List<(int, int)>();
+        if (verseTokens.Length == 0 || windowStart >= windowEnd)
+            return (pairs, 0.0);
+
+        int n = windowEnd - windowStart; // transcript window length
+        int m = verseTokens.Length;
+        var dp = new int[n + 1, m + 1];
+        for (int i = 1; i <= n; i++)
         {
-            bool match = true;
-            for (int j = 0; j < markerLen; j++)
+            for (int j = 1; j <= m; j++)
             {
-                if (!transWords[i + j].Equals(marker[j], StringComparison.OrdinalIgnoreCase))
-                {
-                    match = false;
-                    break;
-                }
-            }
-            if (match)
-            {
-                starts.Add(i);
+                if (transTokens[windowStart + i - 1].Equals(verseTokens[j - 1], StringComparison.Ordinal))
+                    dp[i, j] = dp[i - 1, j - 1] + 1;
+                else
+                    dp[i, j] = Math.Max(dp[i - 1, j], dp[i, j - 1]);
             }
         }
-        return starts;
-    }
 
-    // Find the best matching segment for a verse based on word overlap ratio
-    private (int startIdx, int endIdx, double ratio) FindBestMatch(string[] transWords, int startFrom, string[] verseWords, int maxSearch)
-    {
-        int bestStart = -1;
-        int bestEnd = -1;
-        double bestRatio = 0.0;
-        int verseLen = verseWords.Length;
-        int windowSize = Math.Max(verseLen, 10);
-
-        for (int i = startFrom; i <= transWords.Length - verseLen && i < startFrom + maxSearch; i++)
+        int a = n, b = m;
+        while (a > 0 && b > 0)
         {
-            int matches = 0;
-            int windowEnd = Math.Min(i + windowSize, transWords.Length);
-            for (int j = 0; j < verseLen && i + j < windowEnd; j++)
+            // Take a match only when it is forced: skipping either word
+            // would shrink the LCS. Otherwise an equally good alignment
+            // exists without this occurrence, so skip it to prefer the
+            // earliest occurrence of a repeated word.
+            if (transTokens[windowStart + a - 1].Equals(verseTokens[b - 1], StringComparison.Ordinal)
+                && dp[a - 1, b] < dp[a, b] && dp[a, b - 1] < dp[a, b])
             {
-                if (i + j < transWords.Length && transWords[i + j].Equals(verseWords[j], StringComparison.OrdinalIgnoreCase))
-                {
-                    matches++;
-                }
+                pairs.Add((windowStart + a - 1, b - 1));
+                a--;
+                b--;
             }
-            double ratio = (double)matches / verseLen;
-            if (ratio > bestRatio)
+            else if (dp[a - 1, b] >= dp[a, b - 1])
             {
-                bestRatio = ratio;
-                bestStart = i;
-                bestEnd = Math.Min(i + verseLen - 1, transWords.Length - 1);
-            }
-        }
-        return (bestStart, bestEnd, bestRatio);
-    }
-
-    private int ConfirmEndIndex(int startIndx, int endIdx, string[] transWords, string[] verseWords, string[] nextVerseWords)
-    {
-        var lastIdx = verseWords.ToList().LastIndexOf(transWords[endIdx]);
-        var verseWordsLastIdx = verseWords.Length - 1;
-
-        if (lastIdx == -1) return endIdx;
-
-        if (verseWordsLastIdx - lastIdx > 0)
-        {
-            var diffInx = verseWordsLastIdx - lastIdx;
-            // If we have a mismatch, we need to adjust the end index
-            if (verseWords[verseWordsLastIdx].Equals(transWords[endIdx + diffInx], StringComparison.OrdinalIgnoreCase)) 
-            { 
-                return endIdx + diffInx; 
+                a--;
             }
             else
             {
-                //var newEndIdx = FindSubsetEndIndex(verseWords, GetSubset(transWords, startIndx, endIdx - startIndx + 1));
-
-                //if (newEndIdx != -1)
-                //    return newEndIdx;    
-
-                var (nextStartIdx, nextEndIdx, ratio) = FindBestMatch(transWords, endIdx - 10, nextVerseWords, nextVerseWords.Length - 1 + 20);
-                if (nextStartIdx != -1 && ratio >= 0.5)
-                {
-                    endIdx = nextStartIdx - 1; // Adjust end index to the start of the next verse
-                }
-            }           
-        }        
-
-        return endIdx;
-    }
-    private int CountMatchingValues(string[] array1, string[] array2)
-    {
-        // Handle null or empty arrays
-        if (array1 == null || array2 == null || array1.Length == 0 || array2.Length == 0)
-            return 0;
-
-        // Convert arrays to HashSet for efficient comparison
-        var set1 = new HashSet<string>(array1, StringComparer.OrdinalIgnoreCase);
-        var set2 = new HashSet<string>(array2, StringComparer.OrdinalIgnoreCase);
-
-        // Count common elements
-        return set1.Intersect(set2).Count();
-    }
-    public string[] GetSubset(string[] source, int startIndex, int length)
-    {
-        if (source == null || startIndex < 0 || length <= 0 || startIndex + length > source.Length)
-            return new string[0];
-
-        return source.Skip(startIndex).Take(length).ToArray();
-    }
-    private int FindSubsetEndIndex(string[] source, string[] subset)
-    {
-        // Input validation
-        if (source == null || subset == null || source.Length < 3 || subset.Length < 3)
-            return -1;
-
-        // Get the last three elements of the source array
-        var lastThreeSource = source.TakeLast(3).ToArray();
-        if (lastThreeSource.Length < 3)
-            return -1;
-
-        // Iterate through possible ending positions in subset
-        for (int i = subset.Length - 1; i >= 2; i--)
-        {
-            // Get last three elements of subset ending at index i
-            var lastThreeSubset = subset.Skip(i - 2).Take(3).ToArray();
-
-            // Check if last element matches exactly
-            if (lastThreeSubset[2] != lastThreeSource[2])
-                continue;
-
-            // Create sets for first two elements to ignore order
-            var sourceFirstTwo = new HashSet<string>(lastThreeSource.Take(2), StringComparer.OrdinalIgnoreCase);
-            var subsetFirstTwo = new HashSet<string>(lastThreeSubset.Take(2), StringComparer.OrdinalIgnoreCase);
-
-            // Check if first two elements match (order doesn't matter)
-            if (sourceFirstTwo.Intersect(subsetFirstTwo).Count() == 2)
-                return i;
+                b--;
+            }
         }
-
-        return -1; // No match found
+        pairs.Reverse();
+        double ratio = verseTokens.Length > 0 ? (double)pairs.Count / verseTokens.Length : 0.0;
+        return (pairs, ratio);
     }
+
     public BiblePlaylist.Shared.Bible.Version SetVerseTimings(BiblePlaylist.Shared.Bible.Version partialVersion, Transcription transcription)
     {
         decimal startBuffer = 0.1m;
@@ -196,87 +116,53 @@ public class AudioTimingProcessorSimple : IAudioTimingProcessor
         }
 
         var words = transcription.Words;
-        string[] transWords = words.SelectMany(w => CleanWord(w.Word)).ToArray();
 
-        int transIdx = Array.FindIndex(transWords, w => IsNumber(w));
-        //if (transIdx == -1) transIdx = 3;
-        //else transIdx++;
+        // Flatten the transcript into cleaned tokens, keeping the WordSegment
+        // index for each token so timings can be read back off the original.
+        var transTokens = new List<string>();
+        var transTokenWordIdx = new List<int>();
+        for (int w = 0; w < words.Count; w++)
+        {
+            foreach (var token in CleanWord(words[w].Word))
+            {
+                transTokens.Add(token);
+                transTokenWordIdx.Add(w);
+            }
+        }
+        string[] transArray = transTokens.ToArray();
 
-        transIdx = 3;
-
-        int currentIdx = transIdx;
-        int maxSearch = 150;
         decimal totalDuration = words.Last().End;
         decimal lastEnd = 0m;
+        int currentIdx = 0;
+        const int maxSearch = 150;
+        const double minRatio = 0.5;
 
         for (int i = 0; i < verses.Count; i++)
         {
-            if(i == 16)
-                Debug.WriteLine("Debugging verse 17");
+            string[] verseTokens = CleanAndSplitText(verses[i].Html);
 
-            string[] verseWords = CleanAndSplitText(verses[i].Html);
-            string[] marker = verseWords.Take(3).ToArray();
-            List<int> potentialStarts = FindPotentialStarts(transWords, currentIdx, marker);
+            // Search forward from the previous verse's end so a repeated
+            // phrase resolves to its next occurrence.
+            int windowEnd = Math.Min(currentIdx + maxSearch, transArray.Length);
+            var (pairs, ratio) = AlignVerse(transArray, currentIdx, windowEnd, verseTokens);
 
-            int bestStart = -1;
-            int bestEnd = -1;
-            double bestRatio = 0.0;
-
-            if (potentialStarts.Any())
+            if (pairs.Count > 0 && ratio >= minRatio)
             {
-                foreach (int startIdx in potentialStarts)
-                {
-                    int endIdx = Math.Min(startIdx + verseWords.Length - 1, transWords.Length - 1);
-                    // Confirm that endIdx is really end of the verse
-                    endIdx = ConfirmEndIndex(startIdx, endIdx, transWords, verseWords, i + 1 < verses.Count ? CleanAndSplitText(verses[i + 1].Html) : new string[0]);
-                    int matches = 0;
-                    //for (int j = 0; j < verseWords.Length && startIdx + j <= endIdx; j++)
-                    //{
-                    //    if (transWords[startIdx + j].Equals(verseWords[j], StringComparison.OrdinalIgnoreCase))
-                    //    {
-                    //        matches++;
-                    //    }
-                    //}
-                    var verseWordsEst = GetSubset(transWords, startIdx, endIdx - startIdx +1);
-                    matches = CountMatchingValues(verseWordsEst, verseWords);
-
-                    double ratio = (double)matches / verseWords.Length;
-                    if (ratio >= 0.5 && (bestStart == -1 || ratio > bestRatio))
-                    {
-                        bestStart = startIdx;
-                        bestEnd = endIdx;
-                        bestRatio = ratio;
-                    }
-                }
-            }
-
-            if (bestStart == -1)
-            {
-                var (startIdx, endIdx, ratio) = FindBestMatch(transWords, currentIdx, verseWords, maxSearch);
-                if (startIdx != -1 && ratio >= 0.5)
-                {                    
-                    bestStart = Math.Min(startIdx, currentIdx);
-                    bestEnd = endIdx;
-                    bestRatio = ratio;
-                }
-                
-
-            }
-
-            if (bestStart != -1)
-            {
-                decimal audioStart = words[bestStart].Start - startBuffer;
-                decimal audioEnd = words[bestEnd].End + endBuffer;
+                int firstWordIdx = transTokenWordIdx[pairs.Min(p => p.TransIdx)];
+                int lastWordIdx = transTokenWordIdx[pairs.Max(p => p.TransIdx)];
+                decimal audioStart = words[firstWordIdx].Start - startBuffer;
+                decimal audioEnd = words[lastWordIdx].End + endBuffer;
                 verses[i].AudioStart = Math.Max(audioStart, lastEnd);
                 verses[i].AudioEnd = Math.Min(audioEnd, totalDuration);
                 lastEnd = verses[i].AudioEnd;
-                currentIdx = bestEnd + 1;
+                currentIdx = pairs.Max(p => p.TransIdx) + 1;
             }
             else
             {
-                
+                // No transcript words aligned to this verse: estimate from the
+                // previous verse's end, as before.
                 decimal estimatedStart = lastEnd;
-                decimal estimatedDuration = verseWords.Length * avgWordDuration;
+                decimal estimatedDuration = verseTokens.Length * avgWordDuration;
                 decimal estimatedEnd = estimatedStart + estimatedDuration;
                 if (i + 1 < verses.Count && verses[i + 1].AudioStart > 0)
                 {
