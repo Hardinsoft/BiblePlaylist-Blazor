@@ -115,8 +115,19 @@ window.PlayAudioSegment = async (player, playerSource, src, audioStart, audioEnd
         if (audioSource != null) {
             audioSource.src = src;
             audio.load();
-            audio.currentTime = audioStart;
-            audio.play().catch((ex) => {console.warn(`Failed to play audio segment ${src} ${audioStart} ${audioEnd}`, ex)});
+            // #49: load() resets the element (readyState 0), so seeking
+            // synchronously here fails when the metadata hasn't reloaded
+            // yet. Wait for it before seeking and playing; if it is
+            // already ready (same chapter, cached), seek at once.
+            const startPlayback = () => {
+                audio.currentTime = audioStart;
+                audio.play().catch((ex) => {console.warn(`Failed to play audio segment ${src} ${audioStart} ${audioEnd}`, ex)});
+            };
+            if (audio.readyState >= 1) {
+                startPlayback();
+            } else {
+                audio.addEventListener('loadedmetadata', startPlayback, { once: true });
+            }
 
             audio.ontimeupdate = (ev) => {
                 if (audio.currentTime > audioEnd) {

@@ -237,7 +237,7 @@
         if (firstChapter?.AudioUrl == null)
             return;
         var audioUrl = $"{endpoints.Audio}{firstChapter.AudioUrl}";
-        await JSRuntime.InvokeVoidAsync("PlayAudioSegment", "fullChapterAudioPlayer", "fullChapterAudioSource", audioUrl, verse.AudioStart, verse.AudioEnd);
+        await JSRuntime.InvokeVoidAsync("PlayAudioSegment", "fullChapterAudioPlayer", "fullChapterAudioPlayerSource", audioUrl, verse.AudioStart, verse.AudioEnd);
         delegateLibrary.NotifyHasPlayedChanged(this, new Delegates.EventArgs<bool>(true));
     }
 
