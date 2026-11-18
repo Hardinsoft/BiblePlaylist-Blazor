@@ -106,8 +106,26 @@ a, .btn-link {
     padding-bottom: 12px;
 }
 
+/* #46 (review): the Read page verse-selection bar + playlist picker stick
+   to the bottom of the player bar (NavBibleMenu's sticky bar) so the Add
+   to playlist button stays visible when the selected verse is scrolled
+   near the fold. The player bar sticks at top 64px (desktop) / 57px
+   (phone) and is 120px / 152px tall, so its bottom edge is 184px / 209px.
+   If the player layout changes, re-measure and update these offsets. */
+.stickySelectionBar {
+    position: sticky;
+    position: -webkit-sticky;
+    top: 184px;
+    z-index: 1010;
+    background-color: white;
+}
+
 @media screen and (max-width: 767px) {
     .stick-to-menu-bottom {
         top: 57px; /* Phone top value */
+    }
+
+    .stickySelectionBar {
+        top: 209px; /* Phone player bottom: 57px offset + 152px tall */
     }
 }

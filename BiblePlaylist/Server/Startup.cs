@@ -127,7 +127,12 @@ namespace BiblePlaylist.Server
                         && context.Response.ContentType.StartsWith("text/html", StringComparison.OrdinalIgnoreCase);
                     if (!isHtml)
                     {
-                        await originalBody.WriteAsync(servedBytes);
+                        try
+                        {
+                            await originalBody.WriteAsync(servedBytes);
+                        }
+                        catch { };                           
+                        
                         return;
                     }
 

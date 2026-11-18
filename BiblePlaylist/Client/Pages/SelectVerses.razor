@@ -762,7 +762,7 @@
                 return;
             }
 
-            Snackbar.Add($"Segment {segment.VerseStart}-{segment.VerseEnd} saved.", Severity.Success);
+            Snackbar.Add($"Segment {(segment.VerseStart == segment.VerseEnd ? segment.VerseStart.ToString() : $"{segment.VerseStart}-{segment.VerseEnd}")} saved.", Severity.Success);
             NavManager.NavigateTo(BuildReturnUrl(segment.Id));
         }
         catch (Exception ex)
