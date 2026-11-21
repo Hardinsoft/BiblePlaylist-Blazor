@@ -10,9 +10,9 @@ Total: **238 verses** across 24 chapters (Genesis 74 verses, Exodus 164 verses).
 
 ### Genesis 5 — 1 verse(s)
 
-| Verse | Estimated timing | Reason | Original (broken) timing |
-|---|---|---|---|
-| 32 | 347.80 – 353.80 | end<start | 347.8 – 332.18 |
+| Verse | Estimated timing | Reason | Original (broken) timing | Status |
+|---|---|---|---|---|
+| 32 | 347.80 – 353.80 | end<start | 347.8 – 332.18 | Validated |
 
 ### Genesis 10 — 2 verse(s)
 
